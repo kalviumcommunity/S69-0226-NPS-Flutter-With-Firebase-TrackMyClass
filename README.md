@@ -64,7 +64,6 @@ The application focuses on a **clean UI** so that teachers with minimal technica
 - Small educational institutions
 - Tutors managing multiple students manually
 
----
 
 
 
