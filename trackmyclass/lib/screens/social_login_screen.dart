@@ -1,3 +1,7 @@
+import 'dart:async';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 class SocialLoginScreen extends StatefulWidget {
@@ -382,6 +386,187 @@ class _LoginModalState extends State<_LoginModal> {
   bool _isLogin = true;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _subjectController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
+  bool _isSubmitting = false;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _subjectController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) {
+      return;
+    }
+    showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  String _friendlyAuthError(FirebaseAuthException error) {
+    switch (error.code) {
+      case 'email-already-in-use':
+        return 'That email is already registered. Try logging in.';
+      case 'invalid-email':
+        return 'Please enter a valid email address.';
+      case 'weak-password':
+        return 'Password is too weak. Use at least 6 characters.';
+      case 'user-not-found':
+      case 'wrong-password':
+        return 'Invalid email or password.';
+      case 'user-disabled':
+        return 'This account has been disabled. Contact support.';
+      default:
+        return 'Authentication failed. Please try again.';
+    }
+  }
+
+  Future<void> _handleAuthAction() async {
+    if (_isSubmitting) {
+      return;
+    }
+    if (_isLogin) {
+      await _handleLogin();
+    } else {
+      await _handleRegister();
+    }
+  }
+
+  Future<void> _handleRegister() async {
+    final name = _nameController.text.trim();
+    final subject = _subjectController.text.trim();
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+    final confirmPassword = _confirmPasswordController.text;
+
+    if (name.isEmpty || subject.isEmpty || email.isEmpty || password.isEmpty) {
+      _showMessage('Please fill in all fields.');
+      return;
+    }
+    if (password != confirmPassword) {
+      _showMessage('Passwords do not match.');
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = true;
+    });
+
+    try {
+      final credential =
+          await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      ).timeout(const Duration(seconds: 20));
+      final user = credential.user;
+      if (user == null) {
+        _showMessage('Registration failed. Please try again.');
+        return;
+      }
+
+      await user.updateDisplayName(name);
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .set({
+        'name': name,
+        'subject': subject,
+        'email': email,
+        'emailVerified': user.emailVerified,
+        'createdAt': FieldValue.serverTimestamp(),
+      }).timeout(const Duration(seconds: 20));
+
+      await user.sendEmailVerification();
+      await FirebaseAuth.instance.signOut();
+
+      setState(() {
+        _isLogin = true;
+      });
+      _showMessage(
+        'Verification email sent. Please verify and then log in.',
+      );
+    } on TimeoutException {
+      _showMessage('Request timed out. Check your connection and try again.');
+    } on FirebaseAuthException catch (error) {
+      _showMessage(_friendlyAuthError(error));
+    } catch (_) {
+      _showMessage('Something went wrong. Please try again.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _handleLogin() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    if (email.isEmpty || password.isEmpty) {
+      _showMessage('Please enter your email and password.');
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = true;
+    });
+
+    try {
+        final credential = await FirebaseAuth.instance
+          .signInWithEmailAndPassword(email: email, password: password)
+          .timeout(const Duration(seconds: 20));
+      final user = credential.user;
+      if (user == null) {
+        _showMessage('Login failed. Please try again.');
+        return;
+      }
+      if (!user.emailVerified) {
+        await user.sendEmailVerification();
+        await FirebaseAuth.instance.signOut();
+        _showMessage(
+          'Email not verified. Verification email sent again.',
+        );
+        return;
+      }
+
+      _showMessage('Login successful.');
+    } on TimeoutException {
+      _showMessage('Request timed out. Check your connection and try again.');
+    } on FirebaseAuthException catch (error) {
+      _showMessage(_friendlyAuthError(error));
+    } catch (_) {
+      _showMessage('Something went wrong. Please try again.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -484,6 +669,7 @@ class _LoginModalState extends State<_LoginModal> {
                       border: Border.all(color: const Color(0xFFE2E8F0)),
                     ),
                     child: TextField(
+                      controller: _nameController,
                       keyboardType: TextInputType.name,
                       decoration: InputDecoration(
                         hintText: "Enter your full name",
@@ -513,6 +699,7 @@ class _LoginModalState extends State<_LoginModal> {
                       border: Border.all(color: const Color(0xFFE2E8F0)),
                     ),
                     child: TextField(
+                      controller: _subjectController,
                       decoration: InputDecoration(
                         hintText: "e.g., Mathematics, Science",
                         prefixIcon: const Icon(Icons.book_outlined),
@@ -542,6 +729,7 @@ class _LoginModalState extends State<_LoginModal> {
                     border: Border.all(color: const Color(0xFFE2E8F0)),
                   ),
                   child: TextField(
+                    controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
                     decoration: InputDecoration(
                       hintText: "you@example.com",
@@ -571,6 +759,7 @@ class _LoginModalState extends State<_LoginModal> {
                     border: Border.all(color: const Color(0xFFE2E8F0)),
                   ),
                   child: TextField(
+                    controller: _passwordController,
                     obscureText: _obscurePassword,
                     decoration: InputDecoration(
                       hintText: "Enter your password",
@@ -613,6 +802,7 @@ class _LoginModalState extends State<_LoginModal> {
                       border: Border.all(color: const Color(0xFFE2E8F0)),
                     ),
                     child: TextField(
+                      controller: _confirmPasswordController,
                       obscureText: _obscureConfirmPassword,
                       decoration: InputDecoration(
                         hintText: "Re-enter your password",
@@ -688,13 +878,21 @@ class _LoginModalState extends State<_LoginModal> {
                         borderRadius: BorderRadius.circular(18),
                       ),
                     ),
-                    onPressed: () {
-                      // Email/Password Sign-In Logic
-                    },
-                    child: Text(
-                      _isLogin ? "Login" : "Register",
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
+                    onPressed: _isSubmitting ? null : _handleAuthAction,
+                    child: _isSubmitting
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : Text(
+                            _isLogin ? "Login" : "Register",
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
                   ),
                 ),
                 const SizedBox(height: 16),
