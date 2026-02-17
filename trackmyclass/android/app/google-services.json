@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "311106769503",
+    "project_id": "trackmyclass-7048f",
+    "storage_bucket": "trackmyclass-7048f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:311106769503:android:c713034b6ef03fb94ac1ea",
+        "android_client_info": {
+          "package_name": "com.example.trackmyclass"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB4_EcBSdS7SCYd1t4wrIVRXlDzCdutyX0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
