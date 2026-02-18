@@ -648,9 +648,7 @@ class _LoginModalState extends State<_LoginModal> {
                   decoration: BoxDecoration(
                     color: const Color(0xFF1A2640),
                     borderRadius: BorderRadius.circular(22),
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.1),
-                    ),
+                    border: Border.all(color: Colors.white.withOpacity(0.1)),
                   ),
                   child: Row(
                     children: [
@@ -699,8 +697,13 @@ class _LoginModalState extends State<_LoginModal> {
                       style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
                         hintText: "Enter your full name",
-                        hintStyle: TextStyle(color: Colors.white.withOpacity(0.35)),
-                        prefixIcon: Icon(Icons.person_outline, color: accent.withOpacity(0.8)),
+                        hintStyle: TextStyle(
+                          color: Colors.white.withOpacity(0.35),
+                        ),
+                        prefixIcon: Icon(
+                          Icons.person_outline,
+                          color: accent.withOpacity(0.8),
+                        ),
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16,
@@ -731,8 +734,13 @@ class _LoginModalState extends State<_LoginModal> {
                       style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
                         hintText: "e.g., Mathematics, Science",
-                        hintStyle: TextStyle(color: Colors.white.withOpacity(0.35)),
-                        prefixIcon: Icon(Icons.book_outlined, color: accent.withOpacity(0.8)),
+                        hintStyle: TextStyle(
+                          color: Colors.white.withOpacity(0.35),
+                        ),
+                        prefixIcon: Icon(
+                          Icons.book_outlined,
+                          color: accent.withOpacity(0.8),
+                        ),
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16,
@@ -765,8 +773,13 @@ class _LoginModalState extends State<_LoginModal> {
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
                       hintText: "you@example.com",
-                      hintStyle: TextStyle(color: Colors.white.withOpacity(0.35)),
-                      prefixIcon: Icon(Icons.mail_outline, color: accent.withOpacity(0.8)),
+                      hintStyle: TextStyle(
+                        color: Colors.white.withOpacity(0.35),
+                      ),
+                      prefixIcon: Icon(
+                        Icons.mail_outline,
+                        color: accent.withOpacity(0.8),
+                      ),
                       border: InputBorder.none,
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 16,
@@ -798,8 +811,13 @@ class _LoginModalState extends State<_LoginModal> {
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
                       hintText: "Enter your password",
-                      hintStyle: TextStyle(color: Colors.white.withOpacity(0.35)),
-                      prefixIcon: Icon(Icons.lock_outline, color: accent.withOpacity(0.8)),
+                      hintStyle: TextStyle(
+                        color: Colors.white.withOpacity(0.35),
+                      ),
+                      prefixIcon: Icon(
+                        Icons.lock_outline,
+                        color: accent.withOpacity(0.8),
+                      ),
                       suffixIcon: IconButton(
                         icon: Icon(
                           _obscurePassword
@@ -845,8 +863,13 @@ class _LoginModalState extends State<_LoginModal> {
                       style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
                         hintText: "Re-enter your password",
-                        hintStyle: TextStyle(color: Colors.white.withOpacity(0.35)),
-                        prefixIcon: Icon(Icons.lock_outline, color: accent.withOpacity(0.8)),
+                        hintStyle: TextStyle(
+                          color: Colors.white.withOpacity(0.35),
+                        ),
+                        prefixIcon: Icon(
+                          Icons.lock_outline,
+                          color: accent.withOpacity(0.8),
+                        ),
                         suffixIcon: IconButton(
                           icon: Icon(
                             _obscureConfirmPassword
@@ -888,10 +911,7 @@ class _LoginModalState extends State<_LoginModal> {
                       ),
                       const Text(
                         "Remember me",
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 12,
-                        ),
+                        style: TextStyle(color: Colors.white70, fontSize: 12),
                       ),
                       const Spacer(),
                       TextButton(
@@ -918,13 +938,11 @@ class _LoginModalState extends State<_LoginModal> {
                 const SizedBox(height: 4),
                 SizedBox(
                   height: 50,
+                  width: double.infinity,
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [
-                          accent,
-                          const Color(0xFF0EA5E9),
-                        ],
+                        colors: [accent, const Color(0xFF0EA5E9)],
                         begin: Alignment.centerLeft,
                         end: Alignment.centerRight,
                       ),
@@ -937,15 +955,32 @@ class _LoginModalState extends State<_LoginModal> {
                         ),
                       ],
                     ),
-                    onPressed: _isSubmitting ? null : _handleAuthAction,
-                    child: _isSubmitting
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Colors.white,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                      ),
+                      onPressed: _isSubmitting ? null : _handleAuthAction,
+                      child: _isSubmitting
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.white,
+                                ),
+                              ),
+                            )
+                          : Text(
+                              _isLogin ? "Login" : "Register",
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
                               ),
                             ),
                     ),
@@ -991,7 +1026,9 @@ class _LoginModalState extends State<_LoginModal> {
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),
                             ),
-                            side: BorderSide(color: Colors.white.withOpacity(0.15)),
+                            side: BorderSide(
+                              color: Colors.white.withOpacity(0.15),
+                            ),
                             foregroundColor: Colors.white,
                           ),
                           icon: Image.network(
@@ -1022,10 +1059,16 @@ class _LoginModalState extends State<_LoginModal> {
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(16),
                               ),
-                              side: BorderSide(color: Colors.white.withOpacity(0.15)),
+                              side: BorderSide(
+                                color: Colors.white.withOpacity(0.15),
+                              ),
                               foregroundColor: Colors.white,
                             ),
-                            icon: const Icon(Icons.apple, size: 18, color: Colors.white),
+                            icon: const Icon(
+                              Icons.apple,
+                              size: 18,
+                              color: Colors.white,
+                            ),
                             label: const Text(
                               "Apple",
                               style: TextStyle(
