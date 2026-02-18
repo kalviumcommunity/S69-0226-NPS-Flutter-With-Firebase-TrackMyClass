@@ -587,7 +587,10 @@ class _LoginModalState extends State<_LoginModal> {
 
   @override
   Widget build(BuildContext context) {
-    const cardBackground = Color(0xFFF8FAFC);
+    const backgroundTop = Color(0xFF0B1220);
+    const backgroundBottom = Color(0xFF111A2E);
+    const accent = Color(0xFF22D3EE);
+    const fieldBg = Color(0xFF1A2640);
     final isIos = Theme.of(context).platform == TargetPlatform.iOS;
     final keyboardPadding = MediaQuery.of(context).viewInsets.bottom;
 
@@ -598,7 +601,11 @@ class _LoginModalState extends State<_LoginModal> {
       builder: (context, scrollController) {
         return Container(
           decoration: const BoxDecoration(
-            color: cardBackground,
+            gradient: LinearGradient(
+              colors: [backgroundTop, backgroundBottom],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
             borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
           ),
           child: SingleChildScrollView(
@@ -613,7 +620,7 @@ class _LoginModalState extends State<_LoginModal> {
                     width: 40,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFE2E8F0),
+                      color: Colors.white.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -622,7 +629,7 @@ class _LoginModalState extends State<_LoginModal> {
                 const Text(
                   "Go ahead and set up\nyour account",
                   style: TextStyle(
-                    color: Color(0xFF0F172A),
+                    color: Colors.white,
                     fontSize: 26,
                     fontWeight: FontWeight.w700,
                     height: 1.2,
@@ -633,7 +640,7 @@ class _LoginModalState extends State<_LoginModal> {
                 const Text(
                   "Sign in-up to enjoy the best managing experience",
                   style: TextStyle(
-                    color: Color(0xFF64748B),
+                    color: Colors.white70,
                     fontSize: 13,
                     letterSpacing: 0.2,
                   ),
@@ -642,8 +649,11 @@ class _LoginModalState extends State<_LoginModal> {
                 Container(
                   padding: const EdgeInsets.all(4),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE2E8F0),
+                    color: const Color(0xFF1A2640),
                     borderRadius: BorderRadius.circular(22),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.1),
+                    ),
                   ),
                   child: Row(
                     children: [
@@ -673,24 +683,27 @@ class _LoginModalState extends State<_LoginModal> {
                   const Text(
                     "Full Name",
                     style: TextStyle(
-                      color: Color(0xFF94A3B8),
+                      color: accent,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
+                      letterSpacing: 0.5,
                     ),
                   ),
                   const SizedBox(height: 8),
                   DecoratedBox(
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: fieldBg,
                       borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      border: Border.all(color: Colors.white.withOpacity(0.12)),
                     ),
                     child: TextField(
                       controller: _nameController,
                       keyboardType: TextInputType.name,
+                      style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
                         hintText: "Enter your full name",
-                        prefixIcon: const Icon(Icons.person_outline),
+                        hintStyle: TextStyle(color: Colors.white.withOpacity(0.35)),
+                        prefixIcon: Icon(Icons.person_outline, color: accent.withOpacity(0.8)),
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16,
@@ -703,23 +716,26 @@ class _LoginModalState extends State<_LoginModal> {
                   const Text(
                     "Subject",
                     style: TextStyle(
-                      color: Color(0xFF94A3B8),
+                      color: accent,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
+                      letterSpacing: 0.5,
                     ),
                   ),
                   const SizedBox(height: 8),
                   DecoratedBox(
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: fieldBg,
                       borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      border: Border.all(color: Colors.white.withOpacity(0.12)),
                     ),
                     child: TextField(
                       controller: _subjectController,
+                      style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
                         hintText: "e.g., Mathematics, Science",
-                        prefixIcon: const Icon(Icons.book_outlined),
+                        hintStyle: TextStyle(color: Colors.white.withOpacity(0.35)),
+                        prefixIcon: Icon(Icons.book_outlined, color: accent.withOpacity(0.8)),
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16,
@@ -733,24 +749,27 @@ class _LoginModalState extends State<_LoginModal> {
                 const Text(
                   "Email Address",
                   style: TextStyle(
-                    color: Color(0xFF94A3B8),
+                    color: accent,
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
+                    letterSpacing: 0.5,
                   ),
                 ),
                 const SizedBox(height: 8),
                 DecoratedBox(
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: fieldBg,
                     borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    border: Border.all(color: Colors.white.withOpacity(0.12)),
                   ),
                   child: TextField(
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
+                    style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
                       hintText: "you@example.com",
-                      prefixIcon: const Icon(Icons.mail_outline),
+                      hintStyle: TextStyle(color: Colors.white.withOpacity(0.35)),
+                      prefixIcon: Icon(Icons.mail_outline, color: accent.withOpacity(0.8)),
                       border: InputBorder.none,
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 16,
@@ -763,29 +782,33 @@ class _LoginModalState extends State<_LoginModal> {
                 const Text(
                   "Password",
                   style: TextStyle(
-                    color: Color(0xFF94A3B8),
+                    color: accent,
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
+                    letterSpacing: 0.5,
                   ),
                 ),
                 const SizedBox(height: 8),
                 DecoratedBox(
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: fieldBg,
                     borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    border: Border.all(color: Colors.white.withOpacity(0.12)),
                   ),
                   child: TextField(
                     controller: _passwordController,
                     obscureText: _obscurePassword,
+                    style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
                       hintText: "Enter your password",
-                      prefixIcon: const Icon(Icons.lock_outline),
+                      hintStyle: TextStyle(color: Colors.white.withOpacity(0.35)),
+                      prefixIcon: Icon(Icons.lock_outline, color: accent.withOpacity(0.8)),
                       suffixIcon: IconButton(
                         icon: Icon(
                           _obscurePassword
                               ? Icons.visibility_off
                               : Icons.visibility,
+                          color: Colors.white54,
                         ),
                         onPressed: () {
                           setState(() {
@@ -806,29 +829,33 @@ class _LoginModalState extends State<_LoginModal> {
                   const Text(
                     "Confirm Password",
                     style: TextStyle(
-                      color: Color(0xFF94A3B8),
+                      color: accent,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
+                      letterSpacing: 0.5,
                     ),
                   ),
                   const SizedBox(height: 8),
                   DecoratedBox(
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: fieldBg,
                       borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      border: Border.all(color: Colors.white.withOpacity(0.12)),
                     ),
                     child: TextField(
                       controller: _confirmPasswordController,
                       obscureText: _obscureConfirmPassword,
+                      style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
                         hintText: "Re-enter your password",
-                        prefixIcon: const Icon(Icons.lock_outline),
+                        hintStyle: TextStyle(color: Colors.white.withOpacity(0.35)),
+                        prefixIcon: Icon(Icons.lock_outline, color: accent.withOpacity(0.8)),
                         suffixIcon: IconButton(
                           icon: Icon(
                             _obscureConfirmPassword
                                 ? Icons.visibility_off
                                 : Icons.visibility,
+                            color: Colors.white54,
                           ),
                           onPressed: () {
                             setState(() {
@@ -857,13 +884,15 @@ class _LoginModalState extends State<_LoginModal> {
                             _rememberMe = value ?? false;
                           });
                         },
-                        activeColor: const Color(0xFF0EA5A4),
+                        activeColor: accent,
+                        checkColor: const Color(0xFF0B1220),
+                        side: BorderSide(color: Colors.white.withOpacity(0.4)),
                         visualDensity: VisualDensity.compact,
                       ),
                       const Text(
                         "Remember me",
                         style: TextStyle(
-                          color: Color(0xFF64748B),
+                          color: Colors.white70,
                           fontSize: 12,
                         ),
                       ),
@@ -875,7 +904,7 @@ class _LoginModalState extends State<_LoginModal> {
                         child: const Text(
                           "Forgot Password?",
                           style: TextStyle(
-                            color: Color(0xFF0F172A),
+                            color: accent,
                             fontWeight: FontWeight.w600,
                             fontSize: 12,
                           ),
@@ -886,30 +915,55 @@ class _LoginModalState extends State<_LoginModal> {
                 const SizedBox(height: 4),
                 SizedBox(
                   height: 50,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF6F917A),
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          accent,
+                          const Color(0xFF0EA5E9),
+                        ],
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
                       ),
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: [
+                        BoxShadow(
+                          color: accent.withOpacity(0.35),
+                          blurRadius: 14,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                     ),
-                    onPressed: _isSubmitting ? null : _handleAuthAction,
-                    child: _isSubmitting
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.white),
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        foregroundColor: const Color(0xFF0B1220),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                      ),
+                      onPressed: _isSubmitting ? null : _handleAuthAction,
+                      child: _isSubmitting
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Color(0xFF0B1220)),
+                              ),
+                            )
+                          : Text(
+                              _isLogin ? "Login" : "Register",
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 15,
+                                letterSpacing: 0.5,
+                              ),
                             ),
-                          )
-                        : Text(
-                            _isLogin ? "Login" : "Register",
-                            style: const TextStyle(fontWeight: FontWeight.w700),
-                          ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -918,15 +972,15 @@ class _LoginModalState extends State<_LoginModal> {
                     Expanded(
                       child: Container(
                         height: 1,
-                        color: const Color(0xFFE2E8F0),
+                        color: Colors.white.withOpacity(0.15),
                       ),
                     ),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 12),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
                       child: Text(
                         "Or login with",
                         style: TextStyle(
-                          color: Color(0xFF64748B),
+                          color: Colors.white.withOpacity(0.5),
                           fontSize: 12,
                           letterSpacing: 0.2,
                         ),
@@ -935,7 +989,7 @@ class _LoginModalState extends State<_LoginModal> {
                     Expanded(
                       child: Container(
                         height: 1,
-                        color: const Color(0xFFE2E8F0),
+                        color: Colors.white.withOpacity(0.15),
                       ),
                     ),
                   ],
@@ -948,11 +1002,12 @@ class _LoginModalState extends State<_LoginModal> {
                         height: 46,
                         child: OutlinedButton.icon(
                           style: OutlinedButton.styleFrom(
+                            backgroundColor: const Color(0xFF1A2640),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),
                             ),
-                            side: BorderSide(color: const Color(0xFFE2E8F0)),
-                            foregroundColor: const Color(0xFF0F172A),
+                            side: BorderSide(color: Colors.white.withOpacity(0.15)),
+                            foregroundColor: Colors.white,
                           ),
                           icon: Image.network(
                             "https://img.icons8.com/color/48/google-logo.png",
@@ -978,13 +1033,14 @@ class _LoginModalState extends State<_LoginModal> {
                           height: 46,
                           child: OutlinedButton.icon(
                             style: OutlinedButton.styleFrom(
+                              backgroundColor: const Color(0xFF1A2640),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(16),
                               ),
-                              side: BorderSide(color: const Color(0xFFE2E8F0)),
-                              foregroundColor: const Color(0xFF0F172A),
+                              side: BorderSide(color: Colors.white.withOpacity(0.15)),
+                              foregroundColor: Colors.white,
                             ),
-                            icon: const Icon(Icons.apple, size: 18),
+                            icon: const Icon(Icons.apple, size: 18, color: Colors.white),
                             label: const Text(
                               "Apple",
                               style: TextStyle(
@@ -1002,11 +1058,11 @@ class _LoginModalState extends State<_LoginModal> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                const Text(
+                Text(
                   "By continuing, you agree to keep class data private.",
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: Color(0xFF94A3B8),
+                    color: Colors.white.withOpacity(0.35),
                     fontSize: 11,
                     height: 1.4,
                   ),
@@ -1024,6 +1080,7 @@ class _LoginModalState extends State<_LoginModal> {
     required bool isSelected,
     required VoidCallback onTap,
   }) {
+    const accent = Color(0xFF22D3EE);
     return Expanded(
       child: InkWell(
         onTap: onTap,
@@ -1032,14 +1089,30 @@ class _LoginModalState extends State<_LoginModal> {
           padding: const EdgeInsets.symmetric(vertical: 10),
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: isSelected ? Colors.white : Colors.transparent,
+            gradient: isSelected
+                ? const LinearGradient(
+                    colors: [Color(0xFF22D3EE), Color(0xFF0EA5E9)],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  )
+                : null,
+            color: isSelected ? null : Colors.transparent,
             borderRadius: BorderRadius.circular(18),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: accent.withOpacity(0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
           ),
           child: Text(
             label,
             style: TextStyle(
-              color: isSelected ? const Color(0xFF0F172A) : Colors.black54,
-              fontWeight: FontWeight.w600,
+              color: isSelected ? const Color(0xFF0B1220) : Colors.white54,
+              fontWeight: FontWeight.w700,
               fontSize: 13,
             ),
           ),
