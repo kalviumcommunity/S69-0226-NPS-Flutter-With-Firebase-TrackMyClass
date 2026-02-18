@@ -464,6 +464,7 @@ class _LoginModalState extends State<_LoginModal> {
       _showMessage('Please fill in all fields.');
       return;
     }
+
     if (password != confirmPassword) {
       _showMessage('Passwords do not match.');
       return;
@@ -479,33 +480,49 @@ class _LoginModalState extends State<_LoginModal> {
         email: email,
         password: password,
       ).timeout(const Duration(seconds: 20));
+
       final user = credential.user;
+
       if (user == null) {
         _showMessage('Registration failed. Please try again.');
         return;
       }
 
+      // ✅ Update display name
       await user.updateDisplayName(name);
-      await FirebaseFirestore.instance
+
+      // ✅ Send verification email immediately
+      await user.sendEmailVerification();
+
+      // ✅ Sign out until verified
+      await FirebaseAuth.instance.signOut();
+
+      setState(() {
+        _isLogin = true;
+      });
+
+      // ⭐ Show success popup BEFORE saving to Firestore
+      _showMessage(
+        'Verification email has been sent to $email.\n\n'
+        'Please check your inbox and spam/junk folder to verify your account '
+        'before logging in.',
+      );
+
+      // ✅ Save user data in background (fire-and-forget)
+      FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
           .set({
         'name': name,
         'subject': subject,
         'email': email,
-        'emailVerified': user.emailVerified,
+        'emailVerified': false,
         'createdAt': FieldValue.serverTimestamp(),
-      }).timeout(const Duration(seconds: 20));
-
-      await user.sendEmailVerification();
-      await FirebaseAuth.instance.signOut();
-
-      setState(() {
-        _isLogin = true;
+      }).onError((error, stackTrace) {
+        // Log error but don't show to user - email verification is what matters
+        print('Firestore save error: $error');
       });
-      _showMessage(
-        'Verification email sent. Please verify and then log in.',
-      );
+
     } on TimeoutException {
       _showMessage('Request timed out. Check your connection and try again.');
     } on FirebaseAuthException catch (error) {
