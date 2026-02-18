@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'forgot_password/forgot_password_screen.dart';
 
 class SocialLoginScreen extends StatefulWidget {
   const SocialLoginScreen({super.key});
@@ -475,11 +476,9 @@ class _LoginModalState extends State<_LoginModal> {
     });
 
     try {
-      final credential =
-          await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      ).timeout(const Duration(seconds: 20));
+      final credential = await FirebaseAuth.instance
+          .createUserWithEmailAndPassword(email: email, password: password)
+          .timeout(const Duration(seconds: 20));
 
       final user = credential.user;
 
@@ -513,16 +512,16 @@ class _LoginModalState extends State<_LoginModal> {
           .collection('users')
           .doc(user.uid)
           .set({
-        'name': name,
-        'subject': subject,
-        'email': email,
-        'emailVerified': false,
-        'createdAt': FieldValue.serverTimestamp(),
-      }).onError((error, stackTrace) {
-        // Log error but don't show to user - email verification is what matters
-        print('Firestore save error: $error');
-      });
-
+            'name': name,
+            'subject': subject,
+            'email': email,
+            'emailVerified': false,
+            'createdAt': FieldValue.serverTimestamp(),
+          })
+          .onError((error, stackTrace) {
+            // Log error but don't show to user - email verification is what matters
+            print('Firestore save error: $error');
+          });
     } on TimeoutException {
       _showMessage('Request timed out. Check your connection and try again.');
     } on FirebaseAuthException catch (error) {
@@ -552,7 +551,7 @@ class _LoginModalState extends State<_LoginModal> {
     });
 
     try {
-        final credential = await FirebaseAuth.instance
+      final credential = await FirebaseAuth.instance
           .signInWithEmailAndPassword(email: email, password: password)
           .timeout(const Duration(seconds: 20));
       final user = credential.user;
@@ -563,9 +562,7 @@ class _LoginModalState extends State<_LoginModal> {
       if (!user.emailVerified) {
         await user.sendEmailVerification();
         await FirebaseAuth.instance.signOut();
-        _showMessage(
-          'Email not verified. Verification email sent again.',
-        );
+        _showMessage('Email not verified. Verification email sent again.');
         return;
       }
 
@@ -899,7 +896,13 @@ class _LoginModalState extends State<_LoginModal> {
                       const Spacer(),
                       TextButton(
                         onPressed: () {
-                          // Forgot password flow
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  const ForgotPasswordScreen(),
+                            ),
+                          );
                         },
                         child: const Text(
                           "Forgot Password?",
@@ -934,33 +937,15 @@ class _LoginModalState extends State<_LoginModal> {
                         ),
                       ],
                     ),
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.transparent,
-                        shadowColor: Colors.transparent,
-                        foregroundColor: const Color(0xFF0B1220),
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                      ),
-                      onPressed: _isSubmitting ? null : _handleAuthAction,
-                      child: _isSubmitting
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor:
-                                    AlwaysStoppedAnimation<Color>(Color(0xFF0B1220)),
-                              ),
-                            )
-                          : Text(
-                              _isLogin ? "Login" : "Register",
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                                fontSize: 15,
-                                letterSpacing: 0.5,
+                    onPressed: _isSubmitting ? null : _handleAuthAction,
+                    child: _isSubmitting
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
                               ),
                             ),
                     ),
