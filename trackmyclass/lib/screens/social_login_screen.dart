@@ -5,6 +5,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'forgot_password/forgot_password_screen.dart';
 
+import 'home_screen.dart';
+
 class SocialLoginScreen extends StatefulWidget {
   const SocialLoginScreen({super.key});
 
@@ -566,7 +568,12 @@ class _LoginModalState extends State<_LoginModal> {
         return;
       }
 
-      _showMessage('Login successful.');
+      // Navigate to home screen
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        (_) => false,
+      );
     } on TimeoutException {
       _showMessage('Request timed out. Check your connection and try again.');
     } on FirebaseAuthException catch (error) {
