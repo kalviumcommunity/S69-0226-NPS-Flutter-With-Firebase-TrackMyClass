@@ -146,10 +146,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => _ClassPickerSheet(
-        classes: _classes,
-        selected: _selectedClass ?? '',
-      ),
+      builder: (_) =>
+          _ClassPickerSheet(classes: _classes, selected: _selectedClass ?? ''),
     );
     if (picked != null && mounted) {
       setState(() => _selectedClass = picked);
@@ -170,18 +168,42 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           label: 'Progress',
         );
       case 3:
-        return _ProfileTab(
-          user: _user,
-          onSignOut: _signOut,
-        );
+        return _ProfileTab(user: _user, onSignOut: _signOut);
       default:
-        return _HomeTab(
-          greeting: _greeting,
-          displayName: _displayName,
-          selectedClass: _selectedClass,
-          classesLoading: _classesLoading,
-          onClassTap: _openClassPicker,
-          floatingAnimation: _floatingAnimation,
+        return StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('sessions')
+              .where('class', isEqualTo: _selectedClass)
+              .where('active', isEqualTo: true)
+              .snapshots(),
+          builder: (context, snapshot) {
+            final isSessionActive =
+                snapshot.hasData && snapshot.data!.docs.isNotEmpty;
+
+            return _HomeTab(
+              greeting: _greeting,
+              displayName: _displayName,
+              selectedClass: _selectedClass,
+              classesLoading: _classesLoading,
+              onClassTap: _openClassPicker,
+              floatingAnimation: _floatingAnimation,
+              isSessionActive: isSessionActive,
+              onStartSession: () async {
+                if (_selectedClass == null) return;
+                try {
+                  await FirebaseFirestore.instance.collection('sessions').add({
+                    'class': _selectedClass,
+                    'active': true,
+                    'startTime': FieldValue.serverTimestamp(),
+                    'teacherId': _user?.uid,
+                    'teacherName': _user?.displayName,
+                  });
+                } catch (e) {
+                  debugPrint('Error starting session: $e');
+                }
+              },
+            );
+          },
         );
     }
   }
@@ -236,10 +258,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ),
       ),
       body: SafeArea(
-        child: FadeTransition(
-          opacity: _fadeAnimation,
-          child: _buildBody(),
-        ),
+        child: FadeTransition(opacity: _fadeAnimation, child: _buildBody()),
       ),
     );
   }
@@ -255,6 +274,8 @@ class _HomeTab extends StatelessWidget {
   final bool classesLoading;
   final VoidCallback onClassTap;
   final Animation<double> floatingAnimation;
+  final bool isSessionActive;
+  final VoidCallback onStartSession;
 
   const _HomeTab({
     required this.greeting,
@@ -263,6 +284,8 @@ class _HomeTab extends StatelessWidget {
     required this.classesLoading,
     required this.onClassTap,
     required this.floatingAnimation,
+    required this.isSessionActive,
+    required this.onStartSession,
   });
 
   @override
@@ -344,9 +367,7 @@ class _HomeTab extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: const Color(0xFF1A2640),
                           borderRadius: BorderRadius.circular(30),
-                          border: Border.all(
-                            color: accent.withOpacity(0.35),
-                          ),
+                          border: Border.all(color: accent.withOpacity(0.35)),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -438,85 +459,93 @@ class _HomeTab extends StatelessWidget {
               ),
             ),
 
-
-            // Today's Class card
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-                child: Container(
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        accent.withOpacity(0.25),
-                        const Color(0xFF0EA5E9).withOpacity(0.15),
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: accent.withOpacity(0.3)),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              classesLoading
-                                  ? 'LOADING...'
-                                  : (selectedClass?.toUpperCase() ??
-                                      'NO CLASS SET'),
-                              style: TextStyle(
-                                color: accent.withOpacity(0.8),
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 1.2,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            const Text(
-                              'No session started',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Tap "Start Session" to begin',
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.5),
-                                fontSize: 12,
-                              ),
-                            ),
+            // Today's Class card (Start Session)
+            if (!isSessionActive)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+                  child: GestureDetector(
+                    onTap: onStartSession,
+                    child: Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            accent.withOpacity(0.25),
+                            const Color(0xFF0EA5E9).withOpacity(0.15),
                           ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
                         ),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: accent.withOpacity(0.3)),
                       ),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: accent.withOpacity(0.2),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.play_arrow_rounded,
-                          color: accent,
-                          size: 26,
-                        ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  classesLoading
+                                      ? 'LOADING...'
+                                      : (selectedClass?.toUpperCase() ??
+                                            'NO CLASS SET'),
+                                  style: TextStyle(
+                                    color: accent.withOpacity(0.8),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 1.2,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                const Text(
+                                  'No session started',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Tap to start session',
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.5),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: accent.withOpacity(0.2),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.play_arrow_rounded,
+                              color: accent,
+                              size: 26,
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
               ),
-            ),
 
             // Quick Actions
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  isSessionActive ? 80 : 40,
+                  20,
+                  0,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -530,42 +559,20 @@ class _HomeTab extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    Row(
+                    Column(
                       children: [
-                        Expanded(
-                          child: _QuickActionCard(
-                            icon: Icons.play_circle_fill_rounded,
-                            label: 'Start\nSession',
-                            color: const Color(0xFF22D3EE),
-                            onTap: () {},
-                          ),
+                        _QuickActionCard(
+                          icon: Icons.how_to_reg_rounded,
+                          label: 'View Attendance',
+                          color: const Color(0xFF4ADE80),
+                          onTap: () {},
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _QuickActionCard(
-                            icon: Icons.how_to_reg_rounded,
-                            label: 'Mark\nAttendance',
-                            color: const Color(0xFF4ADE80),
-                            onTap: () {},
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _QuickActionCard(
-                            icon: Icons.bar_chart_rounded,
-                            label: 'View\nProgress',
-                            color: const Color(0xFFA78BFA),
-                            onTap: () {},
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _QuickActionCard(
-                            icon: Icons.edit_note_rounded,
-                            label: 'Add\nRemarks',
-                            color: const Color(0xFFF472B6),
-                            onTap: () {},
-                          ),
+                        const SizedBox(height: 24),
+                        _QuickActionCard(
+                          icon: Icons.bar_chart_rounded,
+                          label: 'View Progress',
+                          color: const Color(0xFFA78BFA),
+                          onTap: () {},
                         ),
                       ],
                     ),
@@ -574,48 +581,7 @@ class _HomeTab extends StatelessWidget {
               ),
             ),
 
-            // Recent Activity
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'RECENT ACTIVITY',
-                      style: TextStyle(
-                        color: accent,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.4,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _ActivityTile(
-                      icon: Icons.check_circle_rounded,
-                      iconColor: const Color(0xFF4ADE80),
-                      title: 'Attendance marked',
-                      subtitle: 'Yesterday · 24 students present',
-                    ),
-                    const SizedBox(height: 8),
-                    _ActivityTile(
-                      icon: Icons.edit_rounded,
-                      iconColor: const Color(0xFFFBBF24),
-                      title: 'Test scores recorded',
-                      subtitle: '2 days ago · Unit Test 3',
-                    ),
-                    const SizedBox(height: 8),
-                    _ActivityTile(
-                      icon: Icons.play_circle_rounded,
-                      iconColor: const Color(0xFF22D3EE),
-                      title: 'Session started',
-                      subtitle: '3 days ago · 45 min session',
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
+            // Recent Activity removed as requested
             const SliverToBoxAdapter(child: SizedBox(height: 28)),
           ],
         ),
@@ -631,10 +597,7 @@ class _ProfileTab extends StatelessWidget {
   final User? user;
   final VoidCallback onSignOut;
 
-  const _ProfileTab({
-    required this.user,
-    required this.onSignOut,
-  });
+  const _ProfileTab({required this.user, required this.onSignOut});
 
   @override
   Widget build(BuildContext context) {
@@ -873,112 +836,48 @@ class _QuickActionCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 6),
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
         decoration: BoxDecoration(
           color: const Color(0xFF1A2640),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(color: Colors.white.withOpacity(0.07)),
           boxShadow: [
             BoxShadow(
-              color: color.withOpacity(0.1),
-              blurRadius: 10,
-              offset: const Offset(0, 3),
+              color: color.withOpacity(0.12),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
-        child: Column(
+        child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(9),
+              padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color: color.withOpacity(0.15),
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, color: color, size: 20),
+              child: Icon(icon, color: color, size: 22),
             ),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                height: 1.3,
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.1,
+                ),
               ),
+            ),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: Colors.white.withOpacity(0.3),
+              size: 20,
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Activity Tile
-// ─────────────────────────────────────────────────────────────────────────────
-class _ActivityTile extends StatelessWidget {
-  final IconData icon;
-  final Color iconColor;
-  final String title;
-  final String subtitle;
-
-  const _ActivityTile({
-    required this.icon,
-    required this.iconColor,
-    required this.title,
-    required this.subtitle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A2640),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: iconColor.withOpacity(0.13),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, color: iconColor, size: 18),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.45),
-                    fontSize: 11,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Icon(
-            Icons.chevron_right_rounded,
-            color: Colors.white.withOpacity(0.25),
-            size: 18,
-          ),
-        ],
       ),
     );
   }
@@ -1100,8 +999,9 @@ class _ClassPickerSheet extends StatelessWidget {
                   children: [
                     Icon(
                       Icons.class_rounded,
-                      color:
-                          isSelected ? accent : Colors.white.withOpacity(0.4),
+                      color: isSelected
+                          ? accent
+                          : Colors.white.withOpacity(0.4),
                       size: 18,
                     ),
                     const SizedBox(width: 12),
@@ -1112,8 +1012,9 @@ class _ClassPickerSheet extends StatelessWidget {
                             ? Colors.white
                             : Colors.white.withOpacity(0.7),
                         fontSize: 14,
-                        fontWeight:
-                            isSelected ? FontWeight.w700 : FontWeight.w400,
+                        fontWeight: isSelected
+                            ? FontWeight.w700
+                            : FontWeight.w400,
                       ),
                     ),
                     const Spacer(),
