@@ -12,7 +12,20 @@
           "package_name": "com.example.trackmyclass"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "311106769503-5aum0ajrivk57rvui0chgf5aqqr43h0v.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.trackmyclass",
+            "certificate_hash": "212f44631feb9d0f5f7a8c20cfe2963e43027a4e"
+          }
+        },
+        {
+          "client_id": "311106769503-ck62pr0bd9ajsj9523afgtchcj7un1kl.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyB4_EcBSdS7SCYd1t4wrIVRXlDzCdutyX0"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "311106769503-ck62pr0bd9ajsj9523afgtchcj7un1kl.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "311106769503-9da6hkfucunn1vti2mkh0g2m9021bt4h.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.trackmyclass"
+              }
+            }
+          ]
         }
       }
     }
