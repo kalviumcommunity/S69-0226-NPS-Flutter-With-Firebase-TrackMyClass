@@ -5,6 +5,11 @@ import 'package:flutter/material.dart';
 import 'social_login_screen.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Default classes shown instantly — no Firestore wait needed
+// ─────────────────────────────────────────────────────────────────────────────
+const List<String> _kDefaultClasses = ['Section 1', 'Section 2', 'Section 3'];
+
+// ─────────────────────────────────────────────────────────────────────────────
 // HomeScreen — root shell with bottom nav
 // ─────────────────────────────────────────────────────────────────────────────
 class HomeScreen extends StatefulWidget {
@@ -24,10 +29,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   final User? _user = FirebaseAuth.instance.currentUser;
 
-  // Class state — shared across tabs
-  List<String> _classes = [];
-  String? _selectedClass;
-  bool _classesLoading = true;
+  // ── Class state ────────────────────────────────────────────────────────────
+  // Pre-populated with defaults so the UI loads immediately.
+  List<String> _classes = List<String>.from(_kDefaultClasses);
+  String? _selectedClass = _kDefaultClasses.first;
+  bool _classesLoading = false; // NOT true — we show defaults instantly
 
   @override
   void initState() {
@@ -51,27 +57,38 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       CurvedAnimation(parent: _floatingController, curve: Curves.easeInOut),
     );
 
-    _fetchClasses();
+    // Merge Firestore classes in background — UI won't block on this
+    _mergeFirestoreClasses();
   }
 
-  Future<void> _fetchClasses() async {
+  /// Fetch classes from Firestore and merge them with the defaults.
+  /// The UI already shows defaults, so this is a background update.
+  Future<void> _mergeFirestoreClasses() async {
     try {
       final snapshot = await FirebaseFirestore.instance
           .collection('classes')
-          .orderBy('name')
-          .get();
-      final names = snapshot.docs
+          .get()
+          .timeout(const Duration(seconds: 8));
+
+      final remote = snapshot.docs
           .map((d) => (d.data()['name'] as String?) ?? d.id)
+          .where((n) => n.isNotEmpty)
           .toList();
-      if (mounted) {
-        setState(() {
-          _classes = names;
-          _selectedClass = names.isNotEmpty ? names.first : null;
-          _classesLoading = false;
-        });
-      }
+
+      if (!mounted) return;
+
+      setState(() {
+        // Merge: keep defaults, add any remote that aren't already present
+        final merged = List<String>.from(_kDefaultClasses);
+        for (final r in remote) {
+          if (!merged.contains(r)) merged.add(r);
+        }
+        _classes = merged;
+        // Keep selected class unless it got removed somehow
+        _selectedClass ??= merged.first;
+      });
     } catch (_) {
-      if (mounted) setState(() => _classesLoading = false);
+      // Firestore unavailable — defaults are already shown, nothing to do
     }
   }
 
@@ -139,22 +156,57 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  // ── Class picker bottom sheet ─────────────────────────────────────────────
+  // ── Class picker bottom sheet ───────────────────────────────────────────────
   Future<void> _openClassPicker() async {
-    if (_classes.isEmpty) return;
-    final picked = await showModalBottomSheet<String>(
+    final result = await showModalBottomSheet<_ClassPickerResult>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (_) =>
           _ClassPickerSheet(classes: _classes, selected: _selectedClass ?? ''),
     );
-    if (picked != null && mounted) {
-      setState(() => _selectedClass = picked);
+
+    if (result == null || !mounted) return;
+
+    setState(() {
+      if (result.newClass != null &&
+          !_classes.contains(result.newClass!) &&
+          result.newClass!.trim().isNotEmpty) {
+        _classes = [..._classes, result.newClass!.trim()];
+        _selectedClass = result.newClass!.trim();
+        // Persist new class to Firestore in background
+        FirebaseFirestore.instance
+            .collection('classes')
+            .add({
+              'name': result.newClass!.trim(),
+              'createdAt': FieldValue.serverTimestamp(),
+              'createdBy': _user?.uid,
+            })
+            .then((_) {})
+            .catchError((_) => null); // silent fail
+      } else if (result.selected != null) {
+        _selectedClass = result.selected;
+      }
+    });
+  }
+
+  // ── Start Session ──────────────────────────────────────────────────────────
+  Future<void> _startSession() async {
+    if (_selectedClass == null) return;
+    try {
+      await FirebaseFirestore.instance.collection('sessions').add({
+        'class': _selectedClass,
+        'active': true,
+        'startTime': FieldValue.serverTimestamp(),
+        'teacherId': _user?.uid,
+        'teacherName': _user?.displayName,
+      });
+    } catch (e) {
+      debugPrint('Error starting session: $e');
     }
   }
 
-  // ── Body switcher ─────────────────────────────────────────────────────────
+  // ── Body switcher ──────────────────────────────────────────────────────────
   Widget _buildBody() {
     switch (_selectedTab) {
       case 1:
@@ -171,6 +223,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         return _ProfileTab(user: _user, onSignOut: _signOut);
       default:
         return StreamBuilder<QuerySnapshot>(
+          key: ValueKey(_selectedClass), // recreate stream when class changes
           stream: FirebaseFirestore.instance
               .collection('sessions')
               .where('class', isEqualTo: _selectedClass)
@@ -188,20 +241,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               onClassTap: _openClassPicker,
               floatingAnimation: _floatingAnimation,
               isSessionActive: isSessionActive,
-              onStartSession: () async {
-                if (_selectedClass == null) return;
-                try {
-                  await FirebaseFirestore.instance.collection('sessions').add({
-                    'class': _selectedClass,
-                    'active': true,
-                    'startTime': FieldValue.serverTimestamp(),
-                    'teacherId': _user?.uid,
-                    'teacherName': _user?.displayName,
-                  });
-                } catch (e) {
-                  debugPrint('Error starting session: $e');
-                }
-              },
+              onStartSession: _startSession,
             );
           },
         );
@@ -326,7 +366,7 @@ class _HomeTab extends StatelessWidget {
         CustomScrollView(
           physics: const ClampingScrollPhysics(),
           slivers: [
-            // App bar (no logout here)
+            // App bar
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
@@ -356,9 +396,9 @@ class _HomeTab extends StatelessWidget {
                       ),
                     ),
                     const Spacer(),
-                    // Class selector pill
+                    // Class selector pill — always ready (no loading state)
                     GestureDetector(
-                      onTap: classesLoading ? null : onClassTap,
+                      onTap: onClassTap,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 12,
@@ -375,9 +415,7 @@ class _HomeTab extends StatelessWidget {
                             Icon(Icons.class_rounded, color: accent, size: 14),
                             const SizedBox(width: 6),
                             Text(
-                              classesLoading
-                                  ? 'Loading...'
-                                  : (selectedClass ?? 'Select class'),
+                              selectedClass ?? 'Select class',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 12,
@@ -385,21 +423,11 @@ class _HomeTab extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(width: 4),
-                            if (classesLoading)
-                              SizedBox(
-                                width: 11,
-                                height: 11,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: accent,
-                                ),
-                              )
-                            else
-                              Icon(
-                                Icons.keyboard_arrow_down_rounded,
-                                color: Colors.white.withOpacity(0.5),
-                                size: 15,
-                              ),
+                            Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              color: Colors.white.withOpacity(0.5),
+                              size: 15,
+                            ),
                           ],
                         ),
                       ),
@@ -459,7 +487,7 @@ class _HomeTab extends StatelessWidget {
               ),
             ),
 
-            // Today's Class card (Start Session)
+            // Today's Class card (Start Session) — always shown for teachers
             if (!isSessionActive)
               SliverToBoxAdapter(
                 child: Padding(
@@ -487,10 +515,8 @@ class _HomeTab extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  classesLoading
-                                      ? 'LOADING...'
-                                      : (selectedClass?.toUpperCase() ??
-                                            'NO CLASS SET'),
+                                  selectedClass?.toUpperCase() ??
+                                      'NO CLASS SET',
                                   style: TextStyle(
                                     color: accent.withOpacity(0.8),
                                     fontSize: 10,
@@ -537,12 +563,89 @@ class _HomeTab extends StatelessWidget {
                 ),
               ),
 
+            // Active session banner
+            if (isSessionActive)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+                  child: Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          const Color(0xFF4ADE80).withOpacity(0.2),
+                          const Color(0xFF22D3EE).withOpacity(0.1),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: const Color(0xFF4ADE80).withOpacity(0.4),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF4ADE80).withOpacity(0.2),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.radio_button_checked,
+                            color: Color(0xFF4ADE80),
+                            size: 22,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                selectedClass?.toUpperCase() ?? '',
+                                style: TextStyle(
+                                  color: const Color(
+                                    0xFF4ADE80,
+                                  ).withOpacity(0.9),
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 1.2,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              const Text(
+                                'Session in progress',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF4ADE80),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
             // Quick Actions
             SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.fromLTRB(
                   20,
-                  isSessionActive ? 80 : 40,
+                  isSessionActive ? 32 : 40,
                   20,
                   0,
                 ),
@@ -567,7 +670,7 @@ class _HomeTab extends StatelessWidget {
                           color: const Color(0xFF4ADE80),
                           onTap: () {},
                         ),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 14),
                         _QuickActionCard(
                           icon: Icons.bar_chart_rounded,
                           label: 'View Progress',
@@ -581,7 +684,6 @@ class _HomeTab extends StatelessWidget {
               ),
             ),
 
-            // Recent Activity removed as requested
             const SliverToBoxAdapter(child: SizedBox(height: 28)),
           ],
         ),
@@ -768,7 +870,7 @@ class _ProfileTab extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Placeholder Tab (Attendance / Progress — not yet implemented)
+// Placeholder Tab
 // ─────────────────────────────────────────────────────────────────────────────
 class _PlaceholderTab extends StatelessWidget {
   final IconData icon;
@@ -932,17 +1034,127 @@ class _NavItem extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Class Picker Bottom Sheet
+// Result model returned by the class picker sheet
 // ─────────────────────────────────────────────────────────────────────────────
-class _ClassPickerSheet extends StatelessWidget {
+class _ClassPickerResult {
+  final String? selected; // an existing class was tapped
+  final String? newClass; // a brand-new class name was added
+
+  const _ClassPickerResult({this.selected, this.newClass});
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Class Picker Bottom Sheet  (now StatefulWidget with + Add class)
+// ─────────────────────────────────────────────────────────────────────────────
+class _ClassPickerSheet extends StatefulWidget {
   final List<String> classes;
   final String selected;
 
   const _ClassPickerSheet({required this.classes, required this.selected});
 
   @override
+  State<_ClassPickerSheet> createState() => _ClassPickerSheetState();
+}
+
+class _ClassPickerSheetState extends State<_ClassPickerSheet> {
+  late List<String> _localClasses;
+  late String _currentSelected;
+
+  @override
+  void initState() {
+    super.initState();
+    _localClasses = List<String>.from(widget.classes);
+    _currentSelected = widget.selected;
+  }
+
+  Future<void> _showAddClassDialog() async {
+    final controller = TextEditingController();
+    const accent = Color(0xFF22D3EE);
+
+    final result = await showDialog<String>(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A2640),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Add New Class',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Enter a class or section name',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.55),
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F1A2E),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: accent.withOpacity(0.4)),
+              ),
+              child: TextField(
+                controller: controller,
+                autofocus: true,
+                style: const TextStyle(color: Colors.white),
+                textCapitalization: TextCapitalization.words,
+                decoration: InputDecoration(
+                  hintText: 'e.g., Grade 6A, Section 4',
+                  hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                ),
+                onSubmitted: (v) {
+                  if (v.trim().isNotEmpty) Navigator.of(ctx).pop(v.trim());
+                },
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white.withOpacity(0.5)),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              final v = controller.text.trim();
+              if (v.isNotEmpty) Navigator.of(ctx).pop(v);
+            },
+            child: const Text(
+              'Add',
+              style: TextStyle(
+                color: Color(0xFF22D3EE),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && result.isNotEmpty && mounted) {
+      // Close the sheet and pass the new class back to parent
+      Navigator.of(context).pop(_ClassPickerResult(newClass: result));
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     const accent = Color(0xFF22D3EE);
+
     return Container(
       decoration: const BoxDecoration(
         color: Color(0xFF0F1A2E),
@@ -953,6 +1165,7 @@ class _ClassPickerSheet extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Drag handle
           Center(
             child: Container(
               width: 36,
@@ -964,71 +1177,122 @@ class _ClassPickerSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 18),
-          const Text(
-            'SELECT CLASS',
-            style: TextStyle(
-              color: Color(0xFF22D3EE),
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.4,
-            ),
-          ),
-          const SizedBox(height: 12),
-          ...classes.map((cls) {
-            final isSelected = cls == selected;
-            return GestureDetector(
-              onTap: () => Navigator.of(context).pop(cls),
-              child: Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 14,
-                ),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? accent.withOpacity(0.12)
-                      : const Color(0xFF1A2640),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: isSelected
-                        ? accent.withOpacity(0.4)
-                        : Colors.white.withOpacity(0.07),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.class_rounded,
-                      color: isSelected
-                          ? accent
-                          : Colors.white.withOpacity(0.4),
-                      size: 18,
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      cls,
-                      style: TextStyle(
-                        color: isSelected
-                            ? Colors.white
-                            : Colors.white.withOpacity(0.7),
-                        fontSize: 14,
-                        fontWeight: isSelected
-                            ? FontWeight.w700
-                            : FontWeight.w400,
-                      ),
-                    ),
-                    const Spacer(),
-                    if (isSelected)
-                      const Icon(
-                        Icons.check_circle_rounded,
-                        color: Color(0xFF22D3EE),
-                        size: 18,
-                      ),
-                  ],
+
+          // Header row
+          Row(
+            children: [
+              const Text(
+                'SELECT CLASS',
+                style: TextStyle(
+                  color: Color(0xFF22D3EE),
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.4,
                 ),
               ),
-            );
-          }),
+              const Spacer(),
+              // + Add class button
+              GestureDetector(
+                onTap: _showAddClassDialog,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 7,
+                  ),
+                  decoration: BoxDecoration(
+                    color: accent.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: accent.withOpacity(0.35)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.add_rounded, color: accent, size: 15),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Add class',
+                        style: TextStyle(
+                          color: accent,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+
+          // Class list
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.5,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                children: _localClasses.map((cls) {
+                  final isSelected = cls == _currentSelected;
+                  return GestureDetector(
+                    onTap: () => Navigator.of(
+                      context,
+                    ).pop(_ClassPickerResult(selected: cls)),
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? accent.withOpacity(0.12)
+                            : const Color(0xFF1A2640),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: isSelected
+                              ? accent.withOpacity(0.4)
+                              : Colors.white.withOpacity(0.07),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.class_rounded,
+                            color: isSelected
+                                ? accent
+                                : Colors.white.withOpacity(0.4),
+                            size: 18,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            cls,
+                            style: TextStyle(
+                              color: isSelected
+                                  ? Colors.white
+                                  : Colors.white.withOpacity(0.7),
+                              fontSize: 14,
+                              fontWeight: isSelected
+                                  ? FontWeight.w700
+                                  : FontWeight.w400,
+                            ),
+                          ),
+                          const Spacer(),
+                          if (isSelected)
+                            const Icon(
+                              Icons.check_circle_rounded,
+                              color: Color(0xFF22D3EE),
+                              size: 18,
+                            ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
         ],
       ),
     );
