@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 import 'home_screen.dart';
 
@@ -592,6 +593,59 @@ class _LoginModalState extends State<_LoginModal> {
     }
   }
 
+  Future<void> _handleGoogleSignIn() async {
+    if (_isSubmitting) return;
+    setState(() => _isSubmitting = true);
+    try {
+      final googleUser = await GoogleSignIn().signIn();
+      if (googleUser == null) {
+        // User cancelled the picker
+        return;
+      }
+
+      final googleAuth = await googleUser.authentication;
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      final userCredential =
+          await FirebaseAuth.instance.signInWithCredential(credential);
+      final user = userCredential.user;
+      if (user == null) {
+        _showMessage('Google Sign-In failed. Please try again.');
+        return;
+      }
+
+      // Persist user data into Firestore on first sign-in
+      final isNew =
+          userCredential.additionalUserInfo?.isNewUser ?? false;
+      if (isNew) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .set({
+          'name': user.displayName ?? '',
+          'email': user.email ?? '',
+          'emailVerified': true,
+          'createdAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }
+
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        (_) => false,
+      );
+    } on FirebaseAuthException catch (e) {
+      _showMessage(_friendlyAuthError(e));
+    } catch (_) {
+      _showMessage('Google Sign-In failed. Please try again.');
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     const backgroundTop = Color(0xFF0B1220);
@@ -1027,9 +1081,7 @@ class _LoginModalState extends State<_LoginModal> {
                               fontSize: 12,
                             ),
                           ),
-                          onPressed: () {
-                            // Google Sign-In Logic
-                          },
+                          onPressed: _isSubmitting ? null : _handleGoogleSignIn,
                         ),
                       ),
                     ),
