@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'forgot_password/forgot_password_screen.dart';
 
 import 'home_screen.dart';
 
@@ -478,11 +479,9 @@ class _LoginModalState extends State<_LoginModal> {
     });
 
     try {
-      final credential =
-          await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      ).timeout(const Duration(seconds: 20));
+      final credential = await FirebaseAuth.instance
+          .createUserWithEmailAndPassword(email: email, password: password)
+          .timeout(const Duration(seconds: 20));
 
       final user = credential.user;
 
@@ -516,16 +515,16 @@ class _LoginModalState extends State<_LoginModal> {
           .collection('users')
           .doc(user.uid)
           .set({
-        'name': name,
-        'subject': subject,
-        'email': email,
-        'emailVerified': false,
-        'createdAt': FieldValue.serverTimestamp(),
-      }).onError((error, stackTrace) {
-        // Log error but don't show to user - email verification is what matters
-        print('Firestore save error: $error');
-      });
-
+            'name': name,
+            'subject': subject,
+            'email': email,
+            'emailVerified': false,
+            'createdAt': FieldValue.serverTimestamp(),
+          })
+          .onError((error, stackTrace) {
+            // Log error but don't show to user - email verification is what matters
+            print('Firestore save error: $error');
+          });
     } on TimeoutException {
       _showMessage('Request timed out. Check your connection and try again.');
     } on FirebaseAuthException catch (error) {
@@ -555,7 +554,7 @@ class _LoginModalState extends State<_LoginModal> {
     });
 
     try {
-        final credential = await FirebaseAuth.instance
+      final credential = await FirebaseAuth.instance
           .signInWithEmailAndPassword(email: email, password: password)
           .timeout(const Duration(seconds: 20));
       final user = credential.user;
@@ -566,9 +565,7 @@ class _LoginModalState extends State<_LoginModal> {
       if (!user.emailVerified) {
         await user.sendEmailVerification();
         await FirebaseAuth.instance.signOut();
-        _showMessage(
-          'Email not verified. Verification email sent again.',
-        );
+        _showMessage('Email not verified. Verification email sent again.');
         return;
       }
 
@@ -712,9 +709,7 @@ class _LoginModalState extends State<_LoginModal> {
                   decoration: BoxDecoration(
                     color: const Color(0xFF1A2640),
                     borderRadius: BorderRadius.circular(22),
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.1),
-                    ),
+                    border: Border.all(color: Colors.white.withOpacity(0.1)),
                   ),
                   child: Row(
                     children: [
@@ -763,8 +758,13 @@ class _LoginModalState extends State<_LoginModal> {
                       style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
                         hintText: "Enter your full name",
-                        hintStyle: TextStyle(color: Colors.white.withOpacity(0.35)),
-                        prefixIcon: Icon(Icons.person_outline, color: accent.withOpacity(0.8)),
+                        hintStyle: TextStyle(
+                          color: Colors.white.withOpacity(0.35),
+                        ),
+                        prefixIcon: Icon(
+                          Icons.person_outline,
+                          color: accent.withOpacity(0.8),
+                        ),
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16,
@@ -795,8 +795,13 @@ class _LoginModalState extends State<_LoginModal> {
                       style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
                         hintText: "e.g., Mathematics, Science",
-                        hintStyle: TextStyle(color: Colors.white.withOpacity(0.35)),
-                        prefixIcon: Icon(Icons.book_outlined, color: accent.withOpacity(0.8)),
+                        hintStyle: TextStyle(
+                          color: Colors.white.withOpacity(0.35),
+                        ),
+                        prefixIcon: Icon(
+                          Icons.book_outlined,
+                          color: accent.withOpacity(0.8),
+                        ),
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16,
@@ -829,8 +834,13 @@ class _LoginModalState extends State<_LoginModal> {
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
                       hintText: "you@example.com",
-                      hintStyle: TextStyle(color: Colors.white.withOpacity(0.35)),
-                      prefixIcon: Icon(Icons.mail_outline, color: accent.withOpacity(0.8)),
+                      hintStyle: TextStyle(
+                        color: Colors.white.withOpacity(0.35),
+                      ),
+                      prefixIcon: Icon(
+                        Icons.mail_outline,
+                        color: accent.withOpacity(0.8),
+                      ),
                       border: InputBorder.none,
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 16,
@@ -862,8 +872,13 @@ class _LoginModalState extends State<_LoginModal> {
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
                       hintText: "Enter your password",
-                      hintStyle: TextStyle(color: Colors.white.withOpacity(0.35)),
-                      prefixIcon: Icon(Icons.lock_outline, color: accent.withOpacity(0.8)),
+                      hintStyle: TextStyle(
+                        color: Colors.white.withOpacity(0.35),
+                      ),
+                      prefixIcon: Icon(
+                        Icons.lock_outline,
+                        color: accent.withOpacity(0.8),
+                      ),
                       suffixIcon: IconButton(
                         icon: Icon(
                           _obscurePassword
@@ -909,8 +924,13 @@ class _LoginModalState extends State<_LoginModal> {
                       style: const TextStyle(color: Colors.white),
                       decoration: InputDecoration(
                         hintText: "Re-enter your password",
-                        hintStyle: TextStyle(color: Colors.white.withOpacity(0.35)),
-                        prefixIcon: Icon(Icons.lock_outline, color: accent.withOpacity(0.8)),
+                        hintStyle: TextStyle(
+                          color: Colors.white.withOpacity(0.35),
+                        ),
+                        prefixIcon: Icon(
+                          Icons.lock_outline,
+                          color: accent.withOpacity(0.8),
+                        ),
                         suffixIcon: IconButton(
                           icon: Icon(
                             _obscureConfirmPassword
@@ -952,15 +972,18 @@ class _LoginModalState extends State<_LoginModal> {
                       ),
                       const Text(
                         "Remember me",
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 12,
-                        ),
+                        style: TextStyle(color: Colors.white70, fontSize: 12),
                       ),
                       const Spacer(),
                       TextButton(
                         onPressed: () {
-                          // Forgot password flow
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  const ForgotPasswordScreen(),
+                            ),
+                          );
                         },
                         child: const Text(
                           "Forgot Password?",
@@ -976,13 +999,11 @@ class _LoginModalState extends State<_LoginModal> {
                 const SizedBox(height: 4),
                 SizedBox(
                   height: 50,
+                  width: double.infinity,
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [
-                          accent,
-                          const Color(0xFF0EA5E9),
-                        ],
+                        colors: [accent, const Color(0xFF0EA5E9)],
                         begin: Alignment.centerLeft,
                         end: Alignment.centerRight,
                       ),
@@ -999,8 +1020,6 @@ class _LoginModalState extends State<_LoginModal> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.transparent,
                         shadowColor: Colors.transparent,
-                        foregroundColor: const Color(0xFF0B1220),
-                        elevation: 0,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(18),
                         ),
@@ -1012,16 +1031,17 @@ class _LoginModalState extends State<_LoginModal> {
                               height: 18,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                valueColor:
-                                    AlwaysStoppedAnimation<Color>(Color(0xFF0B1220)),
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.white,
+                                ),
                               ),
                             )
                           : Text(
                               _isLogin ? "Login" : "Register",
                               style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                                fontSize: 15,
-                                letterSpacing: 0.5,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
                               ),
                             ),
                     ),
@@ -1067,7 +1087,9 @@ class _LoginModalState extends State<_LoginModal> {
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),
                             ),
-                            side: BorderSide(color: Colors.white.withOpacity(0.15)),
+                            side: BorderSide(
+                              color: Colors.white.withOpacity(0.15),
+                            ),
                             foregroundColor: Colors.white,
                           ),
                           icon: Image.network(
@@ -1096,10 +1118,16 @@ class _LoginModalState extends State<_LoginModal> {
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(16),
                               ),
-                              side: BorderSide(color: Colors.white.withOpacity(0.15)),
+                              side: BorderSide(
+                                color: Colors.white.withOpacity(0.15),
+                              ),
                               foregroundColor: Colors.white,
                             ),
-                            icon: const Icon(Icons.apple, size: 18, color: Colors.white),
+                            icon: const Icon(
+                              Icons.apple,
+                              size: 18,
+                              color: Colors.white,
+                            ),
                             label: const Text(
                               "Apple",
                               style: TextStyle(
