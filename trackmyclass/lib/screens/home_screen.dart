@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'attendance_screen.dart';
+import 'progress_screen.dart';
 import 'social_login_screen.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -35,6 +37,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   List<String> _classes = List<String>.from(_kDefaultClasses);
   String? _selectedClass = _kDefaultClasses.first;
   bool _classesLoading = false; // NOT true — we show defaults instantly
+  String? _teacherSubject;
+  StreamSubscription? _userSub;
 
   @override
   void initState() {
@@ -60,6 +64,30 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     // Merge Firestore classes in background — UI won't block on this
     _mergeFirestoreClasses();
+    _startUserStream();
+  }
+
+  void _startUserStream() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    _userSub = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .snapshots()
+        .listen(
+          (doc) {
+            if (doc.exists && mounted) {
+              setState(() {
+                _teacherSubject = doc.data()?['subject'] as String?;
+              });
+            }
+          },
+          onError: (e) {
+            // Silently handle offline/unavailable errors — snapshots continue listening
+            debugPrint('User stream notice: $e');
+          },
+        );
   }
 
   /// Fetch classes from Firestore and merge them with the defaults.
@@ -97,6 +125,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void dispose() {
     _fadeController.dispose();
     _floatingController.dispose();
+    _userSub?.cancel();
     super.dispose();
   }
 
@@ -229,9 +258,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           label: 'Attendance',
         );
       case 2:
-        return _PlaceholderTab(
-          icon: Icons.bar_chart_rounded,
-          label: 'Progress',
+        return ProgressScreen(
+          className: _selectedClass ?? 'Section 1',
+          teacherSubject: _teacherSubject,
         );
       case 3:
         return _ProfileTab(user: _user, onSignOut: _signOut);
@@ -279,6 +308,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     ),
                   ),
                 );
+              },
+              onViewProgress: () {
+                setState(() => _selectedTab = 2);
               },
             );
           },
@@ -355,6 +387,7 @@ class _HomeTab extends StatelessWidget {
   final bool isSessionActive;
   final VoidCallback onStartSession;
   final VoidCallback onViewAttendance;
+  final VoidCallback onViewProgress;
 
   const _HomeTab({
     required this.greeting,
@@ -366,6 +399,7 @@ class _HomeTab extends StatelessWidget {
     required this.isSessionActive,
     required this.onStartSession,
     required this.onViewAttendance,
+    required this.onViewProgress,
   });
 
   @override
@@ -715,7 +749,7 @@ class _HomeTab extends StatelessWidget {
                           icon: Icons.bar_chart_rounded,
                           label: 'View Progress',
                           color: const Color(0xFFA78BFA),
-                          onTap: () {},
+                          onTap: onViewProgress,
                         ),
                       ],
                     ),
