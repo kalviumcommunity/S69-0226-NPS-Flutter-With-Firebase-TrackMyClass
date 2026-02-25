@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import 'attendance_screen.dart';
 import 'social_login_screen.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -232,6 +233,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           builder: (context, snapshot) {
             final isSessionActive =
                 snapshot.hasData && snapshot.data!.docs.isNotEmpty;
+            final sessionId = isSessionActive
+                ? snapshot.data!.docs.first.id
+                : null;
 
             return _HomeTab(
               greeting: _greeting,
@@ -242,6 +246,27 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               floatingAnimation: _floatingAnimation,
               isSessionActive: isSessionActive,
               onStartSession: _startSession,
+              onViewAttendance: () {
+                if (!isSessionActive ||
+                    _selectedClass == null ||
+                    sessionId == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please start a session first.'),
+                      backgroundColor: Color(0xFFFF6B6B),
+                    ),
+                  );
+                  return;
+                }
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => AttendanceScreen(
+                      className: _selectedClass!,
+                      sessionId: sessionId,
+                    ),
+                  ),
+                );
+              },
             );
           },
         );
@@ -316,6 +341,7 @@ class _HomeTab extends StatelessWidget {
   final Animation<double> floatingAnimation;
   final bool isSessionActive;
   final VoidCallback onStartSession;
+  final VoidCallback onViewAttendance;
 
   const _HomeTab({
     required this.greeting,
@@ -326,6 +352,7 @@ class _HomeTab extends StatelessWidget {
     required this.floatingAnimation,
     required this.isSessionActive,
     required this.onStartSession,
+    required this.onViewAttendance,
   });
 
   @override
@@ -668,7 +695,7 @@ class _HomeTab extends StatelessWidget {
                           icon: Icons.how_to_reg_rounded,
                           label: 'View Attendance',
                           color: const Color(0xFF4ADE80),
-                          onTap: () {},
+                          onTap: onViewAttendance,
                         ),
                         const SizedBox(height: 14),
                         _QuickActionCard(
