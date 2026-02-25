@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
@@ -22,11 +23,17 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   List<Map<String, dynamic>> _students = [];
   Map<String, bool> _attendanceStatus =
       {}; // studentId -> true (present) / false (absent)
-
+  StreamSubscription<QuerySnapshot>? _studentsSub;
   @override
   void initState() {
     super.initState();
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _studentsSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -36,83 +43,86 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       final sessionDoc = await FirebaseFirestore.instance
           .collection('sessions')
           .doc(widget.sessionId)
-          .get()
-          .timeout(const Duration(seconds: 10));
+          .get();
 
       final data = sessionDoc.data();
       _attendanceMarked = (data?['attendanceMarked'] as bool?) ?? false;
 
-      // 2. Fetch students for this class
-      final studentsSnap = await FirebaseFirestore.instance
-          .collection('students')
-          .where('class', isEqualTo: widget.className)
-          .get()
-          .timeout(const Duration(seconds: 10));
-
-      List<Map<String, dynamic>> loadedStudents = [];
-      Map<String, bool> loadedStatus = {};
-
+      // 2. Fetch existing attendance records if marked
+      Map<String, bool> attendanceMap = {};
       if (_attendanceMarked) {
-        // Fetch existing attendance records
         final attendanceSnap = await FirebaseFirestore.instance
             .collection('sessions')
             .doc(widget.sessionId)
             .collection('attendance')
-            .get()
-            .timeout(const Duration(seconds: 10));
+            .get();
 
-        // Create a map for quick lookup
-        final attendanceMap = {
+        attendanceMap = {
           for (var doc in attendanceSnap.docs)
             doc.id: (doc.data()['status'] as String?) == 'Present',
         };
-
-        for (var doc in studentsSnap.docs) {
-          final sData = doc.data();
-          loadedStudents.add({
-            'id': doc.id,
-            'name': sData['name'] ?? 'Unknown',
-            'rollNumber': sData['rollNumber'] ?? '',
-          });
-          loadedStatus[doc.id] = attendanceMap[doc.id] ?? false;
-        }
-      } else {
-        // Attendance not marked yet, load students with default Absent
-        for (var doc in studentsSnap.docs) {
-          final sData = doc.data();
-          loadedStudents.add({
-            'id': doc.id,
-            'name': sData['name'] ?? 'Unknown',
-            'rollNumber': sData['rollNumber'] ?? '',
-          });
-          loadedStatus[doc.id] = false; // default absent
-        }
       }
 
-      // Sort by roll number if possible, or name
-      loadedStudents.sort((a, b) {
-        // Try parsing roll number as int for better sorting
-        final rollA = int.tryParse(a['rollNumber'].toString());
-        final rollB = int.tryParse(b['rollNumber'].toString());
+      // 3. Subscribe to real-time student updates
+      _studentsSub = FirebaseFirestore.instance
+          .collection('students')
+          .where('class', isEqualTo: widget.className)
+          .snapshots()
+          .listen(
+            (studentsSnap) {
+              List<Map<String, dynamic>> loadedStudents = [];
 
-        if (rollA != null && rollB != null) return rollA.compareTo(rollB);
-        if (a['rollNumber'].toString().isNotEmpty &&
-            b['rollNumber'].toString().isEmpty)
-          return -1;
-        if (a['rollNumber'].toString().isEmpty &&
-            b['rollNumber'].toString().isNotEmpty)
-          return 1;
+              for (var doc in studentsSnap.docs) {
+                final sData = doc.data();
+                loadedStudents.add({
+                  'id': doc.id,
+                  'name': sData['name'] ?? 'Unknown',
+                  'rollNumber': sData['rollNumber'] ?? '',
+                });
 
-        return a['name'].toString().compareTo(b['name'].toString());
-      });
+                // Initialize status if it doesn't exist yet
+                if (!_attendanceStatus.containsKey(doc.id)) {
+                  if (_attendanceMarked) {
+                    _attendanceStatus[doc.id] = attendanceMap[doc.id] ?? false;
+                  } else {
+                    _attendanceStatus[doc.id] = false; // default absent
+                  }
+                }
+              }
 
-      if (mounted) {
-        setState(() {
-          _students = loadedStudents;
-          _attendanceStatus = loadedStatus;
-          _isLoading = false;
-        });
-      }
+              // Sort by roll number if possible, or name
+              loadedStudents.sort((a, b) {
+                final rollA = int.tryParse(a['rollNumber'].toString());
+                final rollB = int.tryParse(b['rollNumber'].toString());
+
+                if (rollA != null && rollB != null)
+                  return rollA.compareTo(rollB);
+                if (a['rollNumber'].toString().isNotEmpty &&
+                    b['rollNumber'].toString().isEmpty)
+                  return -1;
+                if (a['rollNumber'].toString().isEmpty &&
+                    b['rollNumber'].toString().isNotEmpty)
+                  return 1;
+
+                return a['name'].toString().compareTo(b['name'].toString());
+              });
+
+              if (mounted) {
+                setState(() {
+                  _students = loadedStudents;
+                  _isLoading = false;
+                });
+              }
+            },
+            onError: (error) {
+              if (mounted) {
+                setState(() => _isLoading = false);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Error syncing data: $error')),
+                );
+              }
+            },
+          );
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -194,112 +204,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     }
   }
 
-  void _showAddStudentDialog() {
-    final nameCtrl = TextEditingController();
-    final rollCtrl = TextEditingController();
-    const accent = Color(0xFF22D3EE);
-
-    showDialog(
-      context: context,
-      barrierColor: Colors.black54,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A2640),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
-          'Add Student',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              decoration: BoxDecoration(
-                color: const Color(0xFF0F1A2E),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: accent.withOpacity(0.4)),
-              ),
-              child: TextField(
-                controller: nameCtrl,
-                autofocus: true,
-                style: const TextStyle(color: Colors.white),
-                textCapitalization: TextCapitalization.words,
-                decoration: InputDecoration(
-                  hintText: 'Student Name',
-                  hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              decoration: BoxDecoration(
-                color: const Color(0xFF0F1A2E),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: accent.withOpacity(0.4)),
-              ),
-              child: TextField(
-                controller: rollCtrl,
-                style: const TextStyle(color: Colors.white),
-                keyboardType: TextInputType.text,
-                decoration: InputDecoration(
-                  hintText: 'Roll Number (Optional)',
-                  hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 12,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Text(
-              'Cancel',
-              style: TextStyle(color: Colors.white.withOpacity(0.5)),
-            ),
-          ),
-          TextButton(
-            onPressed: () async {
-              final name = nameCtrl.text.trim();
-              final roll = rollCtrl.text.trim();
-              if (name.isNotEmpty) {
-                Navigator.of(ctx).pop();
-                try {
-                  await FirebaseFirestore.instance.collection('students').add({
-                    'name': name,
-                    'rollNumber': roll,
-                    'class': widget.className,
-                    'createdAt': FieldValue.serverTimestamp(),
-                  });
-                  _loadData(); // reload after adding
-                } catch (e) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Error adding student: $e')),
-                    );
-                  }
-                }
-              }
-            },
-            child: const Text(
-              'Add',
-              style: TextStyle(color: accent, fontWeight: FontWeight.w700),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     const backgroundTop = Color(0xFF0B1220);
@@ -308,6 +212,25 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
     return Scaffold(
       backgroundColor: backgroundTop,
+      floatingActionButton:
+          (!_isLoading && _students.isNotEmpty && !_attendanceMarked)
+          ? FloatingActionButton.extended(
+              onPressed: _showAddStudentDialog,
+              backgroundColor: accent,
+              icon: const Icon(
+                Icons.person_add_rounded,
+                color: Color(0xFF0B1220),
+              ),
+              label: const Text(
+                'Add Student',
+                style: TextStyle(
+                  color: Color(0xFF0B1220),
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            )
+          : null,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -414,71 +337,287 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+  void _showAddStudentDialog() {
+    final nameCtrl = TextEditingController();
+    final rollCtrl = TextEditingController();
+    const accent = Color(0xFF22D3EE);
+
+    showDialog(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A2640),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Add Student',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: const Color(0xFF22D3EE).withOpacity(0.1),
-                shape: BoxShape.circle,
+                color: const Color(0xFF0F1A2E),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: accent.withOpacity(0.4)),
               ),
-              child: const Icon(
-                Icons.people_outline_rounded,
-                size: 64,
-                color: Color(0xFF22D3EE),
-              ),
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'No Students Found',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
+              child: TextField(
+                controller: nameCtrl,
+                autofocus: true,
+                style: const TextStyle(color: Colors.white),
+                textCapitalization: TextCapitalization.words,
+                decoration: InputDecoration(
+                  hintText: 'Student Name',
+                  hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: 12),
-            Text(
-              'It looks like there are no students added to ${widget.className} yet.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.5),
-                fontSize: 14,
-                height: 1.5,
+            Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F1A2E),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: accent.withOpacity(0.4)),
               ),
-            ),
-            const SizedBox(height: 32),
-            TextButton.icon(
-              onPressed: _showAddStudentDialog,
-              style: TextButton.styleFrom(
-                backgroundColor: const Color(0xFF22D3EE).withOpacity(0.15),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 16,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-              icon: const Icon(
-                Icons.person_add_rounded,
-                color: Color(0xFF22D3EE),
-              ),
-              label: const Text(
-                'Add Student',
-                style: TextStyle(
-                  color: Color(0xFF22D3EE),
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
+              child: TextField(
+                controller: rollCtrl,
+                style: const TextStyle(color: Colors.white),
+                keyboardType: TextInputType.text,
+                decoration: InputDecoration(
+                  hintText: 'Roll Number (Optional)',
+                  hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
                 ),
               ),
             ),
           ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white.withOpacity(0.5)),
+            ),
+          ),
+          TextButton(
+            onPressed: () async {
+              final name = nameCtrl.text.trim();
+              final roll = rollCtrl.text.trim();
+              if (name.isNotEmpty) {
+                Navigator.of(ctx).pop();
+                try {
+                  await FirebaseFirestore.instance.collection('students').add({
+                    'name': name,
+                    'rollNumber': roll,
+                    'class': widget.className,
+                    'createdAt': FieldValue.serverTimestamp(),
+                  });
+                  // StreamSubscription handles reloading automatically
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error adding student: $e')),
+                    );
+                  }
+                }
+              }
+            },
+            child: const Text(
+              'Add',
+              style: TextStyle(color: accent, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    final nameCtrl = TextEditingController();
+    final rollCtrl = TextEditingController();
+    const accent = Color(0xFF22D3EE);
+    bool isAdding = false;
+
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(32.0),
+        child: StatefulBuilder(
+          builder: (context, setInnerState) {
+            return Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: accent.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.person_add_alt_1_rounded,
+                    size: 56,
+                    color: accent,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Add First Student',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Add students to ${widget.className} to start tracking attendance.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.6),
+                    fontSize: 14,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 32),
+                Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F1A2E),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: accent.withOpacity(0.3)),
+                  ),
+                  child: TextField(
+                    controller: nameCtrl,
+                    style: const TextStyle(color: Colors.white),
+                    textCapitalization: TextCapitalization.words,
+                    decoration: InputDecoration(
+                      hintText: 'Student Full Name',
+                      hintStyle: TextStyle(
+                        color: Colors.white.withOpacity(0.3),
+                      ),
+                      prefixIcon: Icon(
+                        Icons.person_outline,
+                        color: accent.withOpacity(0.7),
+                      ),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 16,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F1A2E),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: accent.withOpacity(0.3)),
+                  ),
+                  child: TextField(
+                    controller: rollCtrl,
+                    style: const TextStyle(color: Colors.white),
+                    keyboardType: TextInputType.text,
+                    decoration: InputDecoration(
+                      hintText: 'Roll/ID Number (Optional)',
+                      hintStyle: TextStyle(
+                        color: Colors.white.withOpacity(0.3),
+                      ),
+                      prefixIcon: Icon(
+                        Icons.badge_outlined,
+                        color: accent.withOpacity(0.7),
+                      ),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 16,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 32),
+                SizedBox(
+                  width: double.infinity,
+                  height: 54,
+                  child: ElevatedButton(
+                    onPressed: isAdding
+                        ? null
+                        : () async {
+                            final name = nameCtrl.text.trim();
+                            final roll = rollCtrl.text.trim();
+                            if (name.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Student name is required.'),
+                                ),
+                              );
+                              return;
+                            }
+
+                            setInnerState(() => isAdding = true);
+
+                            try {
+                              await FirebaseFirestore.instance
+                                  .collection('students')
+                                  .add({
+                                    'name': name,
+                                    'rollNumber': roll,
+                                    'class': widget.className,
+                                    'createdAt': FieldValue.serverTimestamp(),
+                                  });
+                              // The StreamSubscription instantly picks up the change
+                              if (mounted)
+                                setInnerState(() => isAdding = false);
+                            } catch (e) {
+                              if (mounted) {
+                                setInnerState(() => isAdding = false);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Error adding student: $e'),
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: accent,
+                      foregroundColor: const Color(0xFF0B1220),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: isAdding
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              color: Color(0xFF0B1220),
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Text(
+                            'Add Student',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );

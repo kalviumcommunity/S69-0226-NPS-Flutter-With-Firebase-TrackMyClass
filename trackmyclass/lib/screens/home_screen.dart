@@ -195,13 +195,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Future<void> _startSession() async {
     if (_selectedClass == null) return;
     try {
-      await FirebaseFirestore.instance.collection('sessions').add({
-        'class': _selectedClass,
-        'active': true,
-        'startTime': FieldValue.serverTimestamp(),
-        'teacherId': _user?.uid,
-        'teacherName': _user?.displayName,
-      });
+      final docRef = await FirebaseFirestore.instance
+          .collection('sessions')
+          .add({
+            'class': _selectedClass,
+            'active': true,
+            'startTime': FieldValue.serverTimestamp(),
+            'teacherId': _user?.uid,
+            'teacherName': _user?.displayName,
+          });
+
+      if (!mounted) return;
+
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => AttendanceScreen(
+            className: _selectedClass!,
+            sessionId: docRef.id,
+          ),
+        ),
+      );
     } catch (e) {
       debugPrint('Error starting session: $e');
     }
