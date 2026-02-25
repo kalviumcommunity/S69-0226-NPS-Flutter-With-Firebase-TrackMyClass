@@ -21,9 +21,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   bool _isSaving = false;
   bool _attendanceMarked = false;
   List<Map<String, dynamic>> _students = [];
-  Map<String, bool> _attendanceStatus =
-      {}; // studentId -> true (present) / false (absent)
+  Map<String, bool> _attendanceStatus = {};
   StreamSubscription<QuerySnapshot>? _studentsSub;
+
   @override
   void initState() {
     super.initState();
@@ -103,37 +103,102 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   /// Loads session + attendance data in background and merges into UI.
   Future<void> _loadSessionData() async {
     try {
-      final sessionDoc = await FirebaseFirestore.instance
-          .collection('sessions')
-          .doc(widget.sessionId)
-          .get();
-
-      final data = sessionDoc.data();
-      _attendanceMarked = (data?['attendanceMarked'] as bool?) ?? false;
-
-      if (_attendanceMarked) {
-        final attendanceSnap = await FirebaseFirestore.instance
+      // Fetch session doc + attendance records in parallel — faster load
+      final results = await Future.wait([
+        FirebaseFirestore.instance
+            .collection('sessions')
+            .doc(widget.sessionId)
+            .get(),
+        FirebaseFirestore.instance
             .collection('sessions')
             .doc(widget.sessionId)
             .collection('attendance')
-            .get();
+            .get(),
+      ]);
 
-        final attendanceMap = {
-          for (var doc in attendanceSnap.docs)
-            doc.id: (doc.data()['status'] as String?) == 'Present',
-        };
+      final sessionDoc = results[0] as DocumentSnapshot;
+      final attendanceSnap = results[1] as QuerySnapshot;
 
-        // Merge attendance status into existing student statuses
-        for (final entry in attendanceMap.entries) {
-          _attendanceStatus[entry.key] = entry.value;
-        }
-      }
+      final data = sessionDoc.data() as Map<String, dynamic>?;
+      _attendanceMarked = (data?['attendanceMarked'] as bool?) ?? false;
 
-      if (mounted) setState(() {});
+      final attendanceMap = <String, bool>{
+        for (var doc in attendanceSnap.docs)
+          doc.id:
+              ((doc.data() as Map<String, dynamic>)['status'] as String?) ==
+              'Present',
+      };
+
+      // Subscribe to real-time student updates
+      _studentsSub?.cancel();
+      _studentsSub = FirebaseFirestore.instance
+          .collection('students')
+          .where('class', isEqualTo: widget.className)
+          .snapshots()
+          .listen(
+            (studentsSnap) {
+              final loadedStudents = <Map<String, dynamic>>[];
+
+              for (var doc in studentsSnap.docs) {
+                final sData = doc.data();
+                loadedStudents.add({
+                  'id': doc.id,
+                  'name': sData['name'] ?? 'Unknown',
+                  'rollNumber': sData['rollNumber'] ?? '',
+                });
+
+                if (!_attendanceStatus.containsKey(doc.id)) {
+                  _attendanceStatus[doc.id] = _attendanceMarked
+                      ? (attendanceMap[doc.id] ?? false)
+                      : false;
+                }
+              }
+
+              loadedStudents.sort((a, b) {
+                final rollA = int.tryParse(a['rollNumber'].toString());
+                final rollB = int.tryParse(b['rollNumber'].toString());
+                if (rollA != null && rollB != null)
+                  return rollA.compareTo(rollB);
+                if (a['rollNumber'].toString().isNotEmpty &&
+                    b['rollNumber'].toString().isEmpty)
+                  return -1;
+                if (a['rollNumber'].toString().isEmpty &&
+                    b['rollNumber'].toString().isNotEmpty)
+                  return 1;
+                return a['name'].toString().compareTo(b['name'].toString());
+              });
+
+              if (mounted) {
+                setState(() {
+                  _students = loadedStudents;
+                  _isLoading = false;
+                });
+              }
+            },
+            onError: (error) {
+              if (mounted) {
+                setState(() => _isLoading = false);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Error syncing students: $error')),
+                );
+              }
+            },
+          );
     } catch (e) {
-      // Session data failed — attendance features still work,
-      // students are already visible from the stream.
-      debugPrint('Session data load failed: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load: $e'),
+            backgroundColor: const Color(0xFFFF6B6B),
+            action: SnackBarAction(
+              label: 'RETRY',
+              textColor: Colors.white,
+              onPressed: _loadData,
+            ),
+          ),
+        );
+      }
     }
   }
 
@@ -144,36 +209,39 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     try {
       final batch = FirebaseFirestore.instance.batch();
 
-      // Write attendance records
       for (final student in _students) {
-        final docRef = FirebaseFirestore.instance
-            .collection('sessions')
-            .doc(widget.sessionId)
-            .collection('attendance')
-            .doc(student['id']);
-
-        batch.set(docRef, {
-          'status': _attendanceStatus[student['id']] == true
-              ? 'Present'
-              : 'Absent',
-          'studentName': student['name'],
-          'rollNumber': student['rollNumber'],
-          'timestamp': FieldValue.serverTimestamp(),
-        });
+        batch.set(
+          FirebaseFirestore.instance
+              .collection('sessions')
+              .doc(widget.sessionId)
+              .collection('attendance')
+              .doc(student['id']),
+          {
+            'status': _attendanceStatus[student['id']] == true
+                ? 'Present'
+                : 'Absent',
+            'studentName': student['name'],
+            'rollNumber': student['rollNumber'],
+            'timestamp': FieldValue.serverTimestamp(),
+          },
+        );
       }
 
-      // Update session document
-      final sessionRef = FirebaseFirestore.instance
-          .collection('sessions')
-          .doc(widget.sessionId);
+      batch.update(
+        FirebaseFirestore.instance.collection('sessions').doc(widget.sessionId),
+        {
+          'attendanceMarked': true,
+          'attendanceCount': _attendanceStatus.values.where((v) => v).length,
+          'totalStudents': _students.length,
+        },
+      );
 
-      batch.update(sessionRef, {
-        'attendanceMarked': true,
-        'attendanceCount': _attendanceStatus.values.where((v) => v).length,
-        'totalStudents': _students.length,
+      // Fire and forget batch commit.
+      // Firestore will instantly save to local cache and sync in the background.
+      // This avoids slow responses and erroneous timeout messages.
+      batch.commit().catchError((error) {
+        debugPrint('Background sync error: $error');
       });
-
-      await batch.commit().timeout(const Duration(seconds: 15));
 
       if (mounted) {
         setState(() {
@@ -184,6 +252,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           const SnackBar(
             content: Text('Attendance saved successfully!'),
             backgroundColor: Color(0xFF4ADE80),
+            duration: Duration(seconds: 2),
           ),
         );
       }
@@ -192,11 +261,34 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         setState(() => _isSaving = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to save attendance: $e'),
+            content: Text('Failed to save: $e'),
             backgroundColor: const Color(0xFFFF6B6B),
           ),
         );
       }
+    }
+  }
+
+  /// Re-fetches saved values from Firestore before entering edit mode,
+  /// so toggles always reflect what was actually saved.
+  Future<void> _enterEditMode() async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('sessions')
+          .doc(widget.sessionId)
+          .collection('attendance')
+          .get();
+      if (!mounted) return;
+      setState(() {
+        for (final doc in snap.docs) {
+          _attendanceStatus[doc.id] =
+              ((doc.data() as Map<String, dynamic>)['status'] as String?) ==
+              'Present';
+        }
+        _attendanceMarked = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _attendanceMarked = false);
     }
   }
 
@@ -230,10 +322,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        automaticallyImplyLeading: false,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -258,9 +347,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         actions: [
           if (_attendanceMarked && !_isLoading && _students.isNotEmpty)
             TextButton.icon(
-              onPressed: () {
-                setState(() => _attendanceMarked = false);
-              },
+              onPressed: _enterEditMode,
               icon: const Icon(Icons.edit_rounded, color: accent, size: 16),
               label: const Text(
                 'Edit',
@@ -350,7 +437,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
               decoration: BoxDecoration(
@@ -419,7 +505,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                     'class': widget.className,
                     'createdAt': FieldValue.serverTimestamp(),
                   });
-                  // StreamSubscription handles reloading automatically
                 } catch (e) {
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -558,9 +643,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                               );
                               return;
                             }
-
                             setInnerState(() => isAdding = true);
-
                             try {
                               await FirebaseFirestore.instance
                                   .collection('students')
@@ -570,7 +653,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                                     'class': widget.className,
                                     'createdAt': FieldValue.serverTimestamp(),
                                   });
-                              // The StreamSubscription instantly picks up the change
                               if (mounted)
                                 setInnerState(() => isAdding = false);
                             } catch (e) {
@@ -620,6 +702,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   }
 
   Widget _buildStudentList() {
+    const accent = Color(0xFF22D3EE);
+
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       itemCount: _students.length,
@@ -639,9 +723,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                   ? (isPresent
                         ? const Color(0xFF4ADE80).withOpacity(0.3)
                         : const Color(0xFFFF6B6B).withOpacity(0.3))
-                  : (isPresent
-                        ? const Color(0xFF22D3EE).withOpacity(0.3)
-                        : Colors.transparent),
+                  : (isPresent ? accent.withOpacity(0.3) : Colors.transparent),
               width: 1.5,
             ),
           ),
@@ -657,9 +739,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                         ? (isPresent
                               ? const Color(0xFF4ADE80)
                               : const Color(0xFFFF6B6B))
-                        : (isPresent
-                              ? const Color(0xFF22D3EE)
-                              : Colors.white.withOpacity(0.6)),
+                        : (isPresent ? accent : Colors.white.withOpacity(0.6)),
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -690,6 +770,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                   ],
                 ),
               ),
+              // Badge when saved, toggle when editing
               if (_attendanceMarked)
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -718,14 +799,12 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
               else
                 Switch.adaptive(
                   value: isPresent,
-                  activeColor: const Color(0xFF22D3EE),
-                  activeTrackColor: const Color(0xFF22D3EE).withOpacity(0.3),
+                  activeColor: accent,
+                  activeTrackColor: accent.withOpacity(0.3),
                   inactiveThumbColor: Colors.white.withOpacity(0.4),
                   inactiveTrackColor: Colors.white.withOpacity(0.1),
                   onChanged: (val) {
-                    setState(() {
-                      _attendanceStatus[student['id']] = val;
-                    });
+                    setState(() => _attendanceStatus[student['id']] = val);
                   },
                 ),
             ],
