@@ -36,9 +36,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   String? _selectedClass = _kDefaultClasses.first;
   bool _classesLoading = false; // NOT true — we show defaults instantly
 
+  // Stable stream — rebuilt only when _selectedClass changes, never inside build()
+  late Stream<QuerySnapshot> _sessionsStream;
+
   @override
   void initState() {
     super.initState();
+
+    // Initialise the stable sessions stream for the default class
+    _sessionsStream = _buildSessionsStream(_selectedClass);
 
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 700),
@@ -58,8 +64,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       CurvedAnimation(parent: _floatingController, curve: Curves.easeInOut),
     );
 
-    // Merge Firestore classes in background — UI won't block on this
     _mergeFirestoreClasses();
+  }
+
+  Stream<QuerySnapshot> _buildSessionsStream(String? className) {
+    if (className == null) {
+      // Return an empty stream when no class is selected
+      return const Stream.empty();
+    }
+    return FirebaseFirestore.instance
+        .collection('sessions')
+        .where('class', isEqualTo: className)
+        .where('active', isEqualTo: true)
+        .snapshots();
   }
 
   /// Fetch classes from Firestore and merge them with the defaults.
@@ -175,6 +192,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           result.newClass!.trim().isNotEmpty) {
         _classes = [..._classes, result.newClass!.trim()];
         _selectedClass = result.newClass!.trim();
+        _sessionsStream = _buildSessionsStream(_selectedClass);
         // Persist new class to Firestore in background
         FirebaseFirestore.instance
             .collection('classes')
@@ -187,108 +205,83 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             .catchError((_) => null); // silent fail
       } else if (result.selected != null) {
         _selectedClass = result.selected;
+        _sessionsStream = _buildSessionsStream(_selectedClass);
       }
     });
   }
 
   // ── Start Session ──────────────────────────────────────────────────────────
-  Future<void> _startSession() async {
+  void _startSession() {
     if (_selectedClass == null) return;
-    try {
-      final docRef = await FirebaseFirestore.instance
-          .collection('sessions')
-          .add({
-            'class': _selectedClass,
-            'active': true,
-            'startTime': FieldValue.serverTimestamp(),
-            'teacherId': _user?.uid,
-            'teacherName': _user?.displayName,
-          });
 
-      if (!mounted) return;
+    // Fire and forget so we switch tabs instantly even if network is slow
+    FirebaseFirestore.instance
+        .collection('sessions')
+        .add({
+          'class': _selectedClass,
+          'active': true,
+          'startTime': FieldValue.serverTimestamp(),
+          'teacherId': _user?.uid,
+          'teacherName': _user?.displayName,
+        })
+        .then((_) {})
+        .catchError((e) {
+          debugPrint('Error starting session: $e');
+        });
 
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => AttendanceScreen(
-            className: _selectedClass!,
-            sessionId: docRef.id,
-          ),
-        ),
-      );
-    } catch (e) {
-      debugPrint('Error starting session: $e');
-    }
-  }
-
-  // ── Body switcher ──────────────────────────────────────────────────────────
-  Widget _buildBody() {
-    switch (_selectedTab) {
-      case 1:
-        return _PlaceholderTab(
-          icon: Icons.how_to_reg_rounded,
-          label: 'Attendance',
-        );
-      case 2:
-        return _PlaceholderTab(
-          icon: Icons.bar_chart_rounded,
-          label: 'Progress',
-        );
-      case 3:
-        return _ProfileTab(user: _user, onSignOut: _signOut);
-      default:
-        return StreamBuilder<QuerySnapshot>(
-          key: ValueKey(_selectedClass), // recreate stream when class changes
-          stream: FirebaseFirestore.instance
-              .collection('sessions')
-              .where('class', isEqualTo: _selectedClass)
-              .where('active', isEqualTo: true)
-              .snapshots(),
-          builder: (context, snapshot) {
-            final isSessionActive =
-                snapshot.hasData && snapshot.data!.docs.isNotEmpty;
-            final sessionId = isSessionActive
-                ? snapshot.data!.docs.first.id
-                : null;
-
-            return _HomeTab(
-              greeting: _greeting,
-              displayName: _displayName,
-              selectedClass: _selectedClass,
-              classesLoading: _classesLoading,
-              onClassTap: _openClassPicker,
-              floatingAnimation: _floatingAnimation,
-              isSessionActive: isSessionActive,
-              onStartSession: _startSession,
-              onViewAttendance: () {
-                if (!isSessionActive ||
-                    _selectedClass == null ||
-                    sessionId == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Please start a session first.'),
-                      backgroundColor: Color(0xFFFF6B6B),
-                    ),
-                  );
-                  return;
-                }
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => AttendanceScreen(
-                      className: _selectedClass!,
-                      sessionId: sessionId,
-                    ),
-                  ),
-                );
-              },
-            );
-          },
-        );
-    }
+    setState(() => _selectedTab = 1);
   }
 
   @override
   Widget build(BuildContext context) {
     const backgroundTop = Color(0xFF0B1220);
+
+    // Build the attendance tab widget once, driven by the active session stream.
+    // ── Attendance tab ─────────────────────────────────────────────────────
+    // Uses the STABLE _sessionsStream — same object across builds so
+    // StreamBuilder never restarts, never destroys AttendanceScreen state.
+    final attendanceTab = StreamBuilder<QuerySnapshot>(
+      key: ValueKey(_selectedClass),
+      stream: _sessionsStream,
+      builder: (context, snapshot) {
+        final isActive = snapshot.hasData && snapshot.data!.docs.isNotEmpty;
+        if (isActive) {
+          final sessionId = snapshot.data!.docs.first.id;
+          return AttendanceScreen(
+            key: ValueKey(sessionId),
+            className: _selectedClass!,
+            sessionId: sessionId,
+          );
+        }
+        return _PlaceholderTab(
+          icon: Icons.how_to_reg_rounded,
+          label: 'Attendance',
+        );
+      },
+    );
+
+    // ── Home tab ────────────────────────────────────────────────────────────
+    final homeTab = StreamBuilder<QuerySnapshot>(
+      key: ValueKey('home_$_selectedClass'),
+      stream: _sessionsStream,
+      builder: (context, snapshot) {
+        final isSessionActive =
+            snapshot.hasData && snapshot.data!.docs.isNotEmpty;
+        return _HomeTab(
+          greeting: _greeting,
+          displayName: _displayName,
+          selectedClass: _selectedClass,
+          classesLoading: _classesLoading,
+          onClassTap: _openClassPicker,
+          floatingAnimation: _floatingAnimation,
+          isSessionActive: isSessionActive,
+          onStartSession: _startSession,
+          onViewAttendance: () {
+            setState(() => _selectedTab = 1);
+          },
+        );
+      },
+    );
 
     return Scaffold(
       backgroundColor: backgroundTop,
@@ -336,7 +329,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ),
       ),
       body: SafeArea(
-        child: FadeTransition(opacity: _fadeAnimation, child: _buildBody()),
+        child: FadeTransition(
+          opacity: _fadeAnimation,
+          // IndexedStack keeps ALL tabs alive — no state loss on tab switch
+          child: IndexedStack(
+            index: _selectedTab,
+            children: [
+              homeTab,
+              attendanceTab,
+              _PlaceholderTab(icon: Icons.bar_chart_rounded, label: 'Progress'),
+              _ProfileTab(user: _user, onSignOut: _signOut),
+            ],
+          ),
+        ),
       ),
     );
   }
