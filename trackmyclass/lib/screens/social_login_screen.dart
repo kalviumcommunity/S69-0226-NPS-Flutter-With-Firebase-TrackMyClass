@@ -606,8 +606,9 @@ class _LoginModalState extends State<_LoginModal> {
         idToken: googleAuth.idToken,
       );
 
-      final userCredential =
-          await FirebaseAuth.instance.signInWithCredential(credential);
+      final userCredential = await FirebaseAuth.instance.signInWithCredential(
+        credential,
+      );
       final user = userCredential.user;
       if (user == null) {
         _showMessage('Google Sign-In failed. Please try again.');
@@ -615,13 +616,9 @@ class _LoginModalState extends State<_LoginModal> {
       }
 
       // Persist user data into Firestore on first sign-in
-      final isNew =
-          userCredential.additionalUserInfo?.isNewUser ?? false;
+      final isNew = userCredential.additionalUserInfo?.isNewUser ?? false;
       if (isNew) {
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .set({
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
           'name': user.displayName ?? '',
           'email': user.email ?? '',
           'emailVerified': true,

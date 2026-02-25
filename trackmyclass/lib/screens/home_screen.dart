@@ -308,6 +308,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           onViewAttendance: () {
             setState(() => _selectedTab = 1);
           },
+          onViewProgress: () {
+            setState(() => _selectedTab = 2);
+          },
         );
       },
     );
@@ -366,7 +369,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             children: [
               homeTab,
               attendanceTab,
-              _PlaceholderTab(icon: Icons.bar_chart_rounded, label: 'Progress'),
+              ProgressScreen(
+                className: _selectedClass ?? 'Section 1',
+                teacherSubject: _teacherSubject,
+              ),
               _ProfileTab(user: _user, onSignOut: _signOut),
             ],
           ),

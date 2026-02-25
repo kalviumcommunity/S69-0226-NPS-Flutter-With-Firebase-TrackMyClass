@@ -9,9 +9,7 @@ import 'screens/social_login_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   runApp(const MyApp());
 }
@@ -31,9 +29,7 @@ class MyApp extends StatelessWidget {
             return const Scaffold(
               backgroundColor: Color(0xFF0B1220),
               body: Center(
-                child: CircularProgressIndicator(
-                  color: Color(0xFF22D3EE),
-                ),
+                child: CircularProgressIndicator(color: Color(0xFF22D3EE)),
               ),
             );
           }
