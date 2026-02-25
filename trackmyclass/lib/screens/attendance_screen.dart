@@ -38,8 +38,71 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
+
+    // 1. Subscribe to students stream — shows data as soon as it arrives
+    _studentsSub = FirebaseFirestore.instance
+        .collection('students')
+        .where('class', isEqualTo: widget.className)
+        .snapshots()
+        .listen(
+          (studentsSnap) {
+            List<Map<String, dynamic>> loadedStudents = [];
+
+            for (var doc in studentsSnap.docs) {
+              final sData = doc.data();
+              loadedStudents.add({
+                'id': doc.id,
+                'name': sData['name'] ?? 'Unknown',
+                'rollNumber': sData['rollNumber'] ?? '',
+              });
+
+              // Default absent if no status yet
+              if (!_attendanceStatus.containsKey(doc.id)) {
+                _attendanceStatus[doc.id] = false;
+              }
+            }
+
+            // Sort by roll number if possible, or name
+            loadedStudents.sort((a, b) {
+              final rollA = int.tryParse(a['rollNumber'].toString());
+              final rollB = int.tryParse(b['rollNumber'].toString());
+
+              if (rollA != null && rollB != null) return rollA.compareTo(rollB);
+              if (a['rollNumber'].toString().isNotEmpty &&
+                  b['rollNumber'].toString().isEmpty)
+                return -1;
+              if (a['rollNumber'].toString().isEmpty &&
+                  b['rollNumber'].toString().isNotEmpty)
+                return 1;
+
+              return a['name'].toString().compareTo(b['name'].toString());
+            });
+
+            if (mounted) {
+              setState(() {
+                _students = loadedStudents;
+                _isLoading = false; // Show UI immediately
+              });
+            }
+          },
+          onError: (error) {
+            if (mounted) {
+              setState(() => _isLoading = false);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Error syncing data: $error')),
+              );
+            }
+          },
+        );
+
+    // 2. Fetch session/attendance data in background (non-blocking)
+    //    When it arrives, merge attendance status into the UI.
+    _loadSessionData();
+  }
+
+  /// Loads session + attendance data in background and merges into UI.
+  Future<void> _loadSessionData() async {
     try {
-      // 1. Check if attendance is already marked for this session
       final sessionDoc = await FirebaseFirestore.instance
           .collection('sessions')
           .doc(widget.sessionId)
@@ -48,8 +111,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       final data = sessionDoc.data();
       _attendanceMarked = (data?['attendanceMarked'] as bool?) ?? false;
 
-      // 2. Fetch existing attendance records if marked
-      Map<String, bool> attendanceMap = {};
       if (_attendanceMarked) {
         final attendanceSnap = await FirebaseFirestore.instance
             .collection('sessions')
@@ -57,87 +118,22 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             .collection('attendance')
             .get();
 
-        attendanceMap = {
+        final attendanceMap = {
           for (var doc in attendanceSnap.docs)
             doc.id: (doc.data()['status'] as String?) == 'Present',
         };
+
+        // Merge attendance status into existing student statuses
+        for (final entry in attendanceMap.entries) {
+          _attendanceStatus[entry.key] = entry.value;
+        }
       }
 
-      // 3. Subscribe to real-time student updates
-      _studentsSub = FirebaseFirestore.instance
-          .collection('students')
-          .where('class', isEqualTo: widget.className)
-          .snapshots()
-          .listen(
-            (studentsSnap) {
-              List<Map<String, dynamic>> loadedStudents = [];
-
-              for (var doc in studentsSnap.docs) {
-                final sData = doc.data();
-                loadedStudents.add({
-                  'id': doc.id,
-                  'name': sData['name'] ?? 'Unknown',
-                  'rollNumber': sData['rollNumber'] ?? '',
-                });
-
-                // Initialize status if it doesn't exist yet
-                if (!_attendanceStatus.containsKey(doc.id)) {
-                  if (_attendanceMarked) {
-                    _attendanceStatus[doc.id] = attendanceMap[doc.id] ?? false;
-                  } else {
-                    _attendanceStatus[doc.id] = false; // default absent
-                  }
-                }
-              }
-
-              // Sort by roll number if possible, or name
-              loadedStudents.sort((a, b) {
-                final rollA = int.tryParse(a['rollNumber'].toString());
-                final rollB = int.tryParse(b['rollNumber'].toString());
-
-                if (rollA != null && rollB != null)
-                  return rollA.compareTo(rollB);
-                if (a['rollNumber'].toString().isNotEmpty &&
-                    b['rollNumber'].toString().isEmpty)
-                  return -1;
-                if (a['rollNumber'].toString().isEmpty &&
-                    b['rollNumber'].toString().isNotEmpty)
-                  return 1;
-
-                return a['name'].toString().compareTo(b['name'].toString());
-              });
-
-              if (mounted) {
-                setState(() {
-                  _students = loadedStudents;
-                  _isLoading = false;
-                });
-              }
-            },
-            onError: (error) {
-              if (mounted) {
-                setState(() => _isLoading = false);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Error syncing data: $error')),
-                );
-              }
-            },
-          );
+      if (mounted) setState(() {});
     } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to load data: $e'),
-            backgroundColor: const Color(0xFFFF6B6B),
-            action: SnackBarAction(
-              label: 'RETRY',
-              textColor: Colors.white,
-              onPressed: _loadData,
-            ),
-          ),
-        );
-      }
+      // Session data failed — attendance features still work,
+      // students are already visible from the stream.
+      debugPrint('Session data load failed: $e');
     }
   }
 
