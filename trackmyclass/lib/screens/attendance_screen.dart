@@ -38,6 +38,70 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
+
+    // 1. Subscribe to students stream — shows data as soon as it arrives
+    _studentsSub = FirebaseFirestore.instance
+        .collection('students')
+        .where('class', isEqualTo: widget.className)
+        .snapshots()
+        .listen(
+          (studentsSnap) {
+            List<Map<String, dynamic>> loadedStudents = [];
+
+            for (var doc in studentsSnap.docs) {
+              final sData = doc.data();
+              loadedStudents.add({
+                'id': doc.id,
+                'name': sData['name'] ?? 'Unknown',
+                'rollNumber': sData['rollNumber'] ?? '',
+              });
+
+              // Default absent if no status yet
+              if (!_attendanceStatus.containsKey(doc.id)) {
+                _attendanceStatus[doc.id] = false;
+              }
+            }
+
+            // Sort by roll number if possible, or name
+            loadedStudents.sort((a, b) {
+              final rollA = int.tryParse(a['rollNumber'].toString());
+              final rollB = int.tryParse(b['rollNumber'].toString());
+
+              if (rollA != null && rollB != null) return rollA.compareTo(rollB);
+              if (a['rollNumber'].toString().isNotEmpty &&
+                  b['rollNumber'].toString().isEmpty)
+                return -1;
+              if (a['rollNumber'].toString().isEmpty &&
+                  b['rollNumber'].toString().isNotEmpty)
+                return 1;
+
+              return a['name'].toString().compareTo(b['name'].toString());
+            });
+
+            if (mounted) {
+              setState(() {
+                _students = loadedStudents;
+                _isLoading = false; // Show UI immediately
+              });
+            }
+          },
+          onError: (error) {
+            if (mounted) {
+              setState(() => _isLoading = false);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Error syncing data: $error')),
+              );
+            }
+          },
+        );
+
+    // 2. Fetch session/attendance data in background (non-blocking)
+    //    When it arrives, merge attendance status into the UI.
+    _loadSessionData();
+  }
+
+  /// Loads session + attendance data in background and merges into UI.
+  Future<void> _loadSessionData() async {
     try {
       // Fetch session doc + attendance records in parallel — faster load
       final results = await Future.wait([
