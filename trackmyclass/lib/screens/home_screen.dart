@@ -249,6 +249,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         .add({
           'class': _selectedClass,
           'active': true,
+          'attendanceMarked': false,
+          'sessionSubmitted': false,
           'startTime': FieldValue.serverTimestamp(),
           'teacherId': _user?.uid,
           'teacherName': _user?.displayName,
@@ -259,6 +261,80 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         });
 
     setState(() => _selectedTab = 1);
+  }
+
+  Future<void> _saveAttendanceFromHome(
+    String sessionId,
+    String className,
+  ) async {
+    try {
+      final studentsSnap = await FirebaseFirestore.instance
+          .collection('students')
+          .where('class', isEqualTo: className)
+          .get();
+
+      final batch = FirebaseFirestore.instance.batch();
+
+      for (final doc in studentsSnap.docs) {
+        batch.set(
+          FirebaseFirestore.instance
+              .collection('sessions')
+              .doc(sessionId)
+              .collection('attendance')
+              .doc(doc.id),
+          {
+            'status': 'Absent', // default to Absent
+            'studentName': doc.data()['name'],
+            'rollNumber': doc.data()['rollNumber'],
+            'timestamp': FieldValue.serverTimestamp(),
+          },
+        );
+      }
+
+      batch.update(
+        FirebaseFirestore.instance.collection('sessions').doc(sessionId),
+        {
+          'attendanceMarked': true,
+          'sessionSubmitted': true,
+          'attendanceCount': 0,
+          'totalStudents': studentsSnap.docs.length,
+        },
+      );
+
+      await batch.commit();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Attendance saved as default (Absent). You can edit later.',
+            ),
+            backgroundColor: Color(0xFF4ADE80),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error auto-saving attendance: $e');
+    }
+  }
+
+  void _openActiveSessionSheet(String sessionId, bool isAttendanceMarked) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _ActiveSessionSheet(
+        sessionId: sessionId,
+        isAttendanceMarked: isAttendanceMarked,
+        onViewAttendance: () => setState(() => _selectedTab = 1),
+        onSaveAttendance: () {
+          if (_selectedClass != null) {
+            _saveAttendanceFromHome(sessionId, _selectedClass!);
+          }
+        },
+      ),
+    );
   }
 
   @override
@@ -296,6 +372,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       builder: (context, snapshot) {
         final isSessionActive =
             snapshot.hasData && snapshot.data!.docs.isNotEmpty;
+        final docData = isSessionActive
+            ? snapshot.data!.docs.first.data() as Map<String, dynamic>?
+            : null;
+        final activeSessionId = isSessionActive
+            ? snapshot.data!.docs.first.id
+            : null;
+        // Only show "Attendance Completed" when teacher explicitly submitted from home popup
+        final isAttendanceMarked = docData?['sessionSubmitted'] == true;
+
         return _HomeTab(
           greeting: _greeting,
           displayName: _displayName,
@@ -304,7 +389,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           onClassTap: _openClassPicker,
           floatingAnimation: _floatingAnimation,
           isSessionActive: isSessionActive,
+          isAttendanceMarked: isAttendanceMarked,
           onStartSession: _startSession,
+          onActiveSessionTap: () {
+            if (activeSessionId != null) {
+              _openActiveSessionSheet(activeSessionId, isAttendanceMarked);
+            }
+          },
           onViewAttendance: () {
             setState(() => _selectedTab = 1);
           },
@@ -393,7 +484,9 @@ class _HomeTab extends StatelessWidget {
   final VoidCallback onClassTap;
   final Animation<double> floatingAnimation;
   final bool isSessionActive;
+  final bool isAttendanceMarked;
   final VoidCallback onStartSession;
+  final VoidCallback onActiveSessionTap;
   final VoidCallback onViewAttendance;
   final VoidCallback onViewProgress;
 
@@ -405,7 +498,9 @@ class _HomeTab extends StatelessWidget {
     required this.onClassTap,
     required this.floatingAnimation,
     required this.isSessionActive,
+    required this.isAttendanceMarked,
     required this.onStartSession,
+    required this.onActiveSessionTap,
     required this.onViewAttendance,
     required this.onViewProgress,
   });
@@ -650,73 +745,95 @@ class _HomeTab extends StatelessWidget {
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-                  child: Container(
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          const Color(0xFF4ADE80).withOpacity(0.2),
-                          const Color(0xFF22D3EE).withOpacity(0.1),
+                  child: GestureDetector(
+                    onTap: onActiveSessionTap,
+                    child: Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: isAttendanceMarked
+                              ? [
+                                  accent.withOpacity(0.2),
+                                  const Color(0xFF0EA5E9).withOpacity(0.1),
+                                ]
+                              : [
+                                  const Color(0xFF4ADE80).withOpacity(0.2),
+                                  const Color(0xFF22D3EE).withOpacity(0.1),
+                                ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: isAttendanceMarked
+                              ? accent.withOpacity(0.4)
+                              : const Color(0xFF4ADE80).withOpacity(0.4),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: isAttendanceMarked
+                                  ? accent.withOpacity(0.2)
+                                  : const Color(0xFF4ADE80).withOpacity(0.2),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              isAttendanceMarked
+                                  ? Icons.check_circle_rounded
+                                  : Icons.radio_button_checked,
+                              color: isAttendanceMarked
+                                  ? accent
+                                  : const Color(0xFF4ADE80),
+                              size: 22,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  selectedClass?.toUpperCase() ?? '',
+                                  style: TextStyle(
+                                    color:
+                                        (isAttendanceMarked
+                                                ? accent
+                                                : const Color(0xFF4ADE80))
+                                            .withOpacity(0.9),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 1.2,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  isAttendanceMarked
+                                      ? 'Attendance Completed'
+                                      : 'Session in progress',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: isAttendanceMarked
+                                  ? accent
+                                  : const Color(0xFF4ADE80),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
                         ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
                       ),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: const Color(0xFF4ADE80).withOpacity(0.4),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF4ADE80).withOpacity(0.2),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.radio_button_checked,
-                            color: Color(0xFF4ADE80),
-                            size: 22,
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                selectedClass?.toUpperCase() ?? '',
-                                style: TextStyle(
-                                  color: const Color(
-                                    0xFF4ADE80,
-                                  ).withOpacity(0.9),
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 1.2,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              const Text(
-                                'Session in progress',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF4ADE80),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      ],
                     ),
                   ),
                 ),
@@ -1372,6 +1489,166 @@ class _ClassPickerSheetState extends State<_ClassPickerSheet> {
                     ),
                   );
                 }).toList(),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Active Session Bottom Sheet
+// ─────────────────────────────────────────────────────────────────────────────
+class _ActiveSessionSheet extends StatefulWidget {
+  final String sessionId;
+  final bool isAttendanceMarked;
+  final VoidCallback onViewAttendance;
+  final VoidCallback onSaveAttendance;
+
+  const _ActiveSessionSheet({
+    required this.sessionId,
+    required this.isAttendanceMarked,
+    required this.onViewAttendance,
+    required this.onSaveAttendance,
+  });
+
+  @override
+  State<_ActiveSessionSheet> createState() => _ActiveSessionSheetState();
+}
+
+class _ActiveSessionSheetState extends State<_ActiveSessionSheet> {
+  @override
+  Widget build(BuildContext context) {
+    const accent = Color(0xFF22D3EE);
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFF0F1A2E),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Drag handle
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            'ACTIVE SESSION',
+            style: TextStyle(
+              color: accent,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.4,
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Submit or View Attendance Option
+          GestureDetector(
+            onTap: () {
+              Navigator.of(context).pop();
+              if (widget.isAttendanceMarked) {
+                widget.onViewAttendance();
+              } else {
+                widget.onSaveAttendance();
+              }
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A2640),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white.withOpacity(0.07)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF4ADE80).withOpacity(0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      widget.isAttendanceMarked
+                          ? Icons.assignment_turned_in_rounded
+                          : Icons.how_to_reg_rounded,
+                      color: const Color(0xFF4ADE80),
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Text(
+                      widget.isAttendanceMarked
+                          ? 'View Attendance'
+                          : 'Save Attendance',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: Colors.white.withOpacity(0.3),
+                    size: 20,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Cancel Option
+          GestureDetector(
+            onTap: () {
+              Navigator.of(context).pop();
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A2640),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white.withOpacity(0.07)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.05),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.cancel_rounded,
+                      color: Colors.white.withOpacity(0.5),
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Text(
+                      'Cancel',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.8),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
