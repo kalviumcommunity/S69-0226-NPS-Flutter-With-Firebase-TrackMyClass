@@ -177,18 +177,31 @@ class _StudentProgressScreenState extends State<StudentProgressScreen> {
   }
 
   Widget _buildMarksList(List<QueryDocumentSnapshot> docs) {
-    // Calculate summary
+    // Calculate overall summary
     int totalScore = 0;
     int totalMax = 0;
+
+    // Group marks by subject
+    final Map<String, List<QueryDocumentSnapshot>> subjectGroups = {};
+
     for (final doc in docs) {
       final data = doc.data() as Map<String, dynamic>;
+      final subject = data['subject'] ?? 'Unknown';
+
+      if (!subjectGroups.containsKey(subject)) {
+        subjectGroups[subject] = [];
+      }
+      subjectGroups[subject]!.add(doc);
+
       totalScore += (data['score'] as num?)?.toInt() ?? 0;
       totalMax += (data['totalMarks'] as num?)?.toInt() ?? 0;
     }
+
     final percentage = totalMax > 0 ? (totalScore / totalMax * 100) : 0.0;
+    final sortedSubjects = subjectGroups.keys.toList()..sort();
 
     return CustomScrollView(
-      physics: const ClampingScrollPhysics(),
+      physics: const BouncingScrollPhysics(),
       slivers: [
         // Summary card
         SliverToBoxAdapter(
@@ -215,7 +228,7 @@ class _StudentProgressScreenState extends State<StudentProgressScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'OVERALL',
+                          'OVERALL PROGRESS',
                           style: TextStyle(
                             color: _accent.withOpacity(0.7),
                             fontSize: 10,
@@ -234,7 +247,7 @@ class _StudentProgressScreenState extends State<StudentProgressScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '$totalScore / $totalMax marks',
+                          '$totalScore / $totalMax marks across ${subjectGroups.length} subjects',
                           style: TextStyle(
                             color: Colors.white.withOpacity(0.5),
                             fontSize: 13,
@@ -275,7 +288,7 @@ class _StudentProgressScreenState extends State<StudentProgressScreen> {
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
             child: Text(
-              'MARKS HISTORY',
+              'SUBJECT CATEGORIES',
               style: TextStyle(
                 color: _accent.withOpacity(0.7),
                 fontSize: 10,
@@ -286,164 +299,69 @@ class _StudentProgressScreenState extends State<StudentProgressScreen> {
           ),
         ),
 
-        // Marks entries
-        SliverList(
-          delegate: SliverChildBuilderDelegate((context, index) {
-            final doc = docs[index];
-            final data = doc.data() as Map<String, dynamic>;
-            final subject = data['subject'] ?? 'Unknown';
-            final score = (data['score'] as num?)?.toInt() ?? 0;
-            final total = (data['totalMarks'] as num?)?.toInt() ?? 0;
-            final date = (data['date'] as Timestamp?)?.toDate();
-            final pct = total > 0 ? (score / total * 100) : 0.0;
+        // Subject Grid
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          sliver: SliverGrid(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+              childAspectRatio: 0.9, // More square/portrait
+            ),
+            delegate: SliverChildBuilderDelegate((context, index) {
+              final subject = sortedSubjects[index];
+              final subjectDocs = subjectGroups[subject]!;
 
-            return Dismissible(
-              key: Key(doc.id),
-              direction: DismissDirection.endToStart,
-              background: Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.only(right: 20),
-                decoration: BoxDecoration(
-                  color: _red.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                alignment: Alignment.centerRight,
-                child: const Icon(Icons.delete_rounded, color: _red, size: 24),
-              ),
-              confirmDismiss: (_) => _confirmDelete(context),
-              onDismissed: (_) {
-                FirebaseFirestore.instance
-                    .collection('students')
-                    .doc(widget.studentId)
-                    .collection('marks')
-                    .doc(doc.id)
-                    .delete();
-              },
-              child: Container(
-                margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1A2640),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.white.withOpacity(0.07)),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: _getPercentageColor(pct).withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Center(
-                        child: Text(
-                          '${pct.round()}%',
-                          style: TextStyle(
-                            color: _getPercentageColor(pct),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            subject,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            date != null
-                                ? '${date.day}/${date.month}/${date.year}'
-                                : '',
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.35),
-                              fontSize: 11,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          '$score / $total',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'marks',
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.35),
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }, childCount: docs.length),
+              // Calculate subject summary
+              int subTotal = 0;
+              int subMax = 0;
+              for (final doc in subjectDocs) {
+                final data = doc.data() as Map<String, dynamic>;
+                subTotal += (data['score'] as num?)?.toInt() ?? 0;
+                subMax += (data['totalMarks'] as num?)?.toInt() ?? 0;
+              }
+              final subPct = subMax > 0 ? (subTotal / subMax * 100) : 0.0;
+
+              return _SubjectTile(
+                subject: subject,
+                avgPercentage: subPct,
+                marksCount: subjectDocs.length,
+                totalScore: subTotal,
+                totalMax: subMax,
+                onTap: () => _showSubjectDetails(context, subject, subjectDocs),
+              );
+            }, childCount: sortedSubjects.length),
+          ),
         ),
 
-        const SliverToBoxAdapter(child: SizedBox(height: 80)),
+        const SliverToBoxAdapter(child: SizedBox(height: 100)),
       ],
     );
   }
 
+  void _showSubjectDetails(
+    BuildContext context,
+    String subject,
+    List<QueryDocumentSnapshot> subjectDocs,
+  ) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SubjectDetailScreen(
+          subject: subject,
+          studentName: widget.studentName,
+          marksDocs: subjectDocs,
+          studentId: widget.studentId,
+        ),
+      ),
+    );
+  }
+
+  // Internal helper for percentage color
   Color _getPercentageColor(double pct) {
     if (pct >= 75) return _green;
     if (pct >= 50) return _yellow;
     return _red;
-  }
-
-  Future<bool?> _confirmDelete(BuildContext context) {
-    return showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A2640),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
-          'Delete Marks?',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-        ),
-        content: Text(
-          'This entry will be permanently removed.',
-          style: TextStyle(color: Colors.white.withOpacity(0.6)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(
-              'Cancel',
-              style: TextStyle(color: Colors.white.withOpacity(0.5)),
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text(
-              'Delete',
-              style: TextStyle(color: _red, fontWeight: FontWeight.w700),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   void _showAddMarksDialog(BuildContext context) async {
@@ -630,6 +548,363 @@ class _StudentProgressScreenState extends State<StudentProgressScreen> {
             vertical: 12,
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Subject Tile
+// ─────────────────────────────────────────────────────────────────────────────
+class _SubjectTile extends StatelessWidget {
+  final String subject;
+  final double avgPercentage;
+  final int marksCount;
+  final int totalScore;
+  final int totalMax;
+  final VoidCallback onTap;
+
+  const _SubjectTile({
+    required this.subject,
+    required this.avgPercentage,
+    required this.marksCount,
+    required this.totalScore,
+    required this.totalMax,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _getPercentageColor(avgPercentage);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A2640),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withOpacity(0.07)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 54,
+                    height: 54,
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.12),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: color.withOpacity(0.3),
+                        width: 2,
+                      ),
+                    ),
+                    child: Center(
+                      child: Text(
+                        '${avgPercentage.round()}%',
+                        style: TextStyle(
+                          color: color,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    subject,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '$marksCount entries',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.4),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Color _getPercentageColor(double pct) {
+    if (pct >= 75) return const Color(0xFF4ADE80);
+    if (pct >= 50) return const Color(0xFFFBBF24);
+    return const Color(0xFFFF6B6B);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Subject Detail Screen
+// ─────────────────────────────────────────────────────────────────────────────
+class SubjectDetailScreen extends StatelessWidget {
+  final String subject;
+  final String studentName;
+  final List<QueryDocumentSnapshot> marksDocs;
+  final String studentId;
+
+  const SubjectDetailScreen({
+    super.key,
+    required this.subject,
+    required this.studentName,
+    required this.marksDocs,
+    required this.studentId,
+  });
+
+  static const _backgroundTop = Color(0xFF0B1220);
+  static const _backgroundBottom = Color(0xFF111A2E);
+  static const _accent = Color(0xFFA78BFA);
+  static const _red = Color(0xFFFF6B6B);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _backgroundTop,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              subject,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            Text(
+              'Marks History for $studentName',
+              style: TextStyle(
+                color: _accent.withOpacity(0.8),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [_backgroundTop, _backgroundBottom],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: ListView.builder(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          itemCount: marksDocs.length,
+          itemBuilder: (context, index) {
+            final doc = marksDocs[index];
+            final data = doc.data() as Map<String, dynamic>;
+            final score = (data['score'] as num?)?.toInt() ?? 0;
+            final total = (data['totalMarks'] as num?)?.toInt() ?? 0;
+            final date = (data['date'] as Timestamp?)?.toDate();
+            final pct = total > 0 ? (score / total * 100) : 0.0;
+
+            return Dismissible(
+              key: Key(doc.id),
+              direction: DismissDirection.endToStart,
+              background: Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.only(right: 20),
+                decoration: BoxDecoration(
+                  color: _red.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                alignment: Alignment.centerRight,
+                child: const Icon(Icons.delete_rounded, color: _red, size: 24),
+              ),
+              confirmDismiss: (_) => _confirmDelete(context),
+              onDismissed: (_) {
+                FirebaseFirestore.instance
+                    .collection('students')
+                    .doc(studentId)
+                    .collection('marks')
+                    .doc(doc.id)
+                    .delete();
+              },
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A2640),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.white.withOpacity(0.07)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: _getPercentageColor(pct).withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Center(
+                        child: Text(
+                          '${pct.round()}%',
+                          style: TextStyle(
+                            color: _getPercentageColor(pct),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            date != null
+                                ? '${_getMonth(date.month)} ${date.day}, ${date.year}'
+                                : 'Recent',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Entry #${marksDocs.length - index}',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.35),
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          '$score / $total',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'marks',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.35),
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Color _getPercentageColor(double pct) {
+    if (pct >= 75) return const Color(0xFF4ADE80);
+    if (pct >= 50) return const Color(0xFFFBBF24);
+    return const Color(0xFFFF6B6B);
+  }
+
+  String _getMonth(int month) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return months[month - 1];
+  }
+
+  Future<bool?> _confirmDelete(BuildContext context) {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A2640),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Delete Marks?',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+        ),
+        content: Text(
+          'This entry will be permanently removed.',
+          style: TextStyle(color: Colors.white.withOpacity(0.6)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white.withOpacity(0.5)),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text(
+              'Delete',
+              style: TextStyle(color: _red, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
       ),
     );
   }
