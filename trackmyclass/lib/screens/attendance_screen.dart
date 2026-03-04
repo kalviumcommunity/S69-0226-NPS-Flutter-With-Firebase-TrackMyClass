@@ -212,7 +212,11 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     try {
       final batch = FirebaseFirestore.instance.batch();
 
+      int presentCount = 0;
       for (final student in _students) {
+        final isPresent = _attendanceStatus[student['id']] == true;
+        if (isPresent) presentCount++;
+
         batch.set(
           FirebaseFirestore.instance
               .collection('sessions')
@@ -220,9 +224,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
               .collection('attendance')
               .doc(student['id']),
           {
-            'status': _attendanceStatus[student['id']] == true
-                ? 'Present'
-                : 'Absent',
+            'status': isPresent ? 'Present' : 'Absent',
             'studentName': student['name'],
             'rollNumber': student['rollNumber'],
             'timestamp': FieldValue.serverTimestamp(),
@@ -234,7 +236,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         FirebaseFirestore.instance.collection('sessions').doc(widget.sessionId),
         {
           'attendanceMarked': true,
-          'attendanceCount': _attendanceStatus.values.where((v) => v).length,
+          'sessionSubmitted': true,
+          'attendanceCount': presentCount,
           'totalStudents': _students.length,
         },
       );
