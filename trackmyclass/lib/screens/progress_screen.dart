@@ -8,11 +8,13 @@ import 'student_progress_screen.dart';
 class ProgressScreen extends StatelessWidget {
   final String className;
   final String? teacherSubject;
+  final String institutionName;
 
   const ProgressScreen({
     super.key,
     required this.className,
     this.teacherSubject,
+    required this.institutionName,
   });
 
   @override
@@ -60,6 +62,7 @@ class ProgressScreen extends StatelessWidget {
         child: StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance
               .collection('students')
+              .where('institutionName', isEqualTo: institutionName)
               .where('class', isEqualTo: className)
               .snapshots(),
           builder: (context, snapshot) {
@@ -132,6 +135,7 @@ class ProgressScreen extends StatelessWidget {
                   studentId: student['id'] as String,
                   studentName: student['name'] as String,
                   teacherSubject: teacherSubject,
+                  institutionName: institutionName,
                 );
               },
             );
@@ -196,6 +200,7 @@ class _StudentCard extends StatelessWidget {
   final String studentId;
   final String studentName;
   final String? teacherSubject;
+  final String institutionName;
 
   const _StudentCard({
     required this.name,
@@ -203,6 +208,7 @@ class _StudentCard extends StatelessWidget {
     required this.studentId,
     required this.studentName,
     this.teacherSubject,
+    required this.institutionName,
   });
 
   @override
@@ -217,6 +223,7 @@ class _StudentCard extends StatelessWidget {
               studentId: studentId,
               studentName: studentName,
               teacherSubject: teacherSubject,
+              institutionName: institutionName,
             ),
           ),
         );

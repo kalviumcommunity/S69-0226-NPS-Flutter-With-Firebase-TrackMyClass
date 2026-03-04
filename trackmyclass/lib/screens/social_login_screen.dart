@@ -7,6 +7,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'forgot_password/forgot_password_screen.dart';
 
 import 'home_screen.dart';
+import 'institution_setup_screen.dart';
 
 class SocialLoginScreen extends StatefulWidget {
   const SocialLoginScreen({super.key});
@@ -569,8 +570,29 @@ class _LoginModalState extends State<_LoginModal> {
         return;
       }
 
-      // Navigate to home screen
+      // Check if institution setup is needed
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
       if (!mounted) return;
+
+      final data = userDoc.data() as Map<String, dynamic>?;
+      final hasInstitution =
+          data != null &&
+          data.containsKey('institutionName') &&
+          (data['institutionName'] as String).trim().isNotEmpty;
+
+      if (!hasInstitution) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const InstitutionSetupScreen()),
+          (_) => false,
+        );
+        return;
+      }
+
+      // Navigate to home screen
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const HomeScreen()),
         (_) => false,
@@ -626,7 +648,28 @@ class _LoginModalState extends State<_LoginModal> {
         }, SetOptions(merge: true));
       }
 
+      // Check if institution setup is needed
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
       if (!mounted) return;
+
+      final data = userDoc.data() as Map<String, dynamic>?;
+      final hasInstitution =
+          data != null &&
+          data.containsKey('institutionName') &&
+          (data['institutionName'] as String).trim().isNotEmpty;
+
+      if (!hasInstitution) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const InstitutionSetupScreen()),
+          (_) => false,
+        );
+        return;
+      }
+
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const HomeScreen()),
         (_) => false,

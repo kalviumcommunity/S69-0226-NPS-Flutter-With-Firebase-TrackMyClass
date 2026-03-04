@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'attendance_screen.dart';
 import 'progress_screen.dart';
 import 'social_login_screen.dart';
+import 'institution_setup_screen.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Default classes shown instantly — no Firestore wait needed
@@ -38,6 +39,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   String? _selectedClass = _kDefaultClasses.first;
   bool _classesLoading = false; // NOT true — we show defaults instantly
   String? _teacherSubject;
+  String? _institutionName;
   StreamSubscription? _userSub;
 
   // Stable stream — rebuilt only when _selectedClass changes, never inside build()
@@ -83,9 +85,28 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         .listen(
           (doc) {
             if (doc.exists && mounted) {
+              final data = doc.data();
+              final instName = data?['institutionName'] as String?;
+
+              // If institution is missing, redirect to setup
+              if (instName == null || instName.isEmpty) {
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(
+                    builder: (_) => const InstitutionSetupScreen(),
+                  ),
+                  (_) => false,
+                );
+                return;
+              }
+
               setState(() {
-                _teacherSubject = doc.data()?['subject'] as String?;
+                _teacherSubject = data?['subject'] as String?;
+                _institutionName = instName;
               });
+
+              // Refresh streams with institution filter
+              _mergeFirestoreClasses();
+              _sessionsStream = _buildSessionsStream(_selectedClass);
             }
           },
           onError: (e) {
@@ -96,12 +117,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Stream<QuerySnapshot> _buildSessionsStream(String? className) {
-    if (className == null) {
-      // Return an empty stream when no class is selected
+    if (className == null || _institutionName == null) {
+      // Return an empty stream when no class is selected or institution unknown
       return const Stream.empty();
     }
     return FirebaseFirestore.instance
         .collection('sessions')
+        .where('institutionName', isEqualTo: _institutionName)
         .where('class', isEqualTo: className)
         .where('active', isEqualTo: true)
         .snapshots();
@@ -110,9 +132,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   /// Fetch classes from Firestore and merge them with the defaults.
   /// The UI already shows defaults, so this is a background update.
   Future<void> _mergeFirestoreClasses() async {
+    if (_institutionName == null) return;
+
     try {
       final snapshot = await FirebaseFirestore.instance
           .collection('classes')
+          .where('institutionName', isEqualTo: _institutionName)
           .get()
           .timeout(const Duration(seconds: 8));
 
@@ -227,6 +252,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             .collection('classes')
             .add({
               'name': result.newClass!.trim(),
+              'institutionName': _institutionName,
               'createdAt': FieldValue.serverTimestamp(),
               'createdBy': _user?.uid,
             })
@@ -248,6 +274,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         .collection('sessions')
         .add({
           'class': _selectedClass,
+          'institutionName': _institutionName,
           'active': true,
           'attendanceMarked': false,
           'sessionSubmitted': false,
@@ -270,6 +297,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     try {
       final studentsSnap = await FirebaseFirestore.instance
           .collection('students')
+          .where('institutionName', isEqualTo: _institutionName)
           .where('class', isEqualTo: className)
           .get();
 
@@ -356,6 +384,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             key: ValueKey(sessionId),
             className: _selectedClass!,
             sessionId: sessionId,
+            institutionName: _institutionName!,
           );
         }
         return _PlaceholderTab(
@@ -463,6 +492,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ProgressScreen(
                 className: _selectedClass ?? 'Section 1',
                 teacherSubject: _teacherSubject,
+                institutionName: _institutionName ?? '',
               ),
               _ProfileTab(user: _user, onSignOut: _signOut),
             ],
