@@ -151,11 +151,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                   'rollNumber': sData['rollNumber'] ?? '',
                 });
 
-                if (!_attendanceStatus.containsKey(doc.id)) {
-                  _attendanceStatus[doc.id] = _attendanceMarked
-                      ? (attendanceMap[doc.id] ?? false)
-                      : false;
-                }
+                // Always sync with the latest DB state on fresh load
+                _attendanceStatus[doc.id] = _attendanceMarked
+                    ? (attendanceMap[doc.id] ?? false)
+                    : false;
               }
 
               loadedStudents.sort((a, b) {

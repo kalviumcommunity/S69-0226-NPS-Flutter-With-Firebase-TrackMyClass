@@ -409,6 +409,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             : null;
         // Only show "Attendance Completed" when teacher explicitly submitted from home popup
         final isAttendanceMarked = docData?['sessionSubmitted'] == true;
+        final presentCount = (docData?['attendanceCount'] as int?) ?? 0;
+        final totalCount = (docData?['totalStudents'] as int?) ?? 0;
 
         return _HomeTab(
           greeting: _greeting,
@@ -419,6 +421,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           floatingAnimation: _floatingAnimation,
           isSessionActive: isSessionActive,
           isAttendanceMarked: isAttendanceMarked,
+          presentCount: presentCount,
+          totalCount: totalCount,
           onStartSession: _startSession,
           onActiveSessionTap: () {
             if (activeSessionId != null) {
@@ -515,6 +519,8 @@ class _HomeTab extends StatelessWidget {
   final Animation<double> floatingAnimation;
   final bool isSessionActive;
   final bool isAttendanceMarked;
+  final int presentCount;
+  final int totalCount;
   final VoidCallback onStartSession;
   final VoidCallback onActiveSessionTap;
   final VoidCallback onViewAttendance;
@@ -529,6 +535,8 @@ class _HomeTab extends StatelessWidget {
     required this.floatingAnimation,
     required this.isSessionActive,
     required this.isAttendanceMarked,
+    required this.presentCount,
+    required this.totalCount,
     required this.onStartSession,
     required this.onActiveSessionTap,
     required this.onViewAttendance,
@@ -570,351 +578,366 @@ class _HomeTab extends StatelessWidget {
           ),
         ),
         // Content
-        CustomScrollView(
-          physics: const ClampingScrollPhysics(),
-          slivers: [
-            // App bar
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                child: Row(
-                  children: [
-                    Container(
-                      height: 40,
-                      width: 40,
-                      decoration: BoxDecoration(
-                        color: accent.withOpacity(0.18),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(
-                        Icons.school_rounded,
-                        color: Colors.white,
-                        size: 22,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    const Text(
-                      'TrackMyClass',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                    const Spacer(),
-                    // Class selector pill — always ready (no loading state)
-                    GestureDetector(
-                      onTap: onClassTap,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 7,
-                        ),
+        ScrollConfiguration(
+          behavior: ScrollConfiguration.of(context).copyWith(overscroll: false),
+          child: CustomScrollView(
+            physics: const ClampingScrollPhysics(),
+            slivers: [
+              // App bar
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                  child: Row(
+                    children: [
+                      Container(
+                        height: 40,
+                        width: 40,
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1A2640),
-                          borderRadius: BorderRadius.circular(30),
-                          border: Border.all(color: accent.withOpacity(0.35)),
+                          color: accent.withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.school_rounded,
+                          color: Colors.white,
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      const Text(
+                        'TrackMyClass',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                      const Spacer(),
+                      // Class selector pill — always ready (no loading state)
+                      GestureDetector(
+                        onTap: onClassTap,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 7,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1A2640),
+                            borderRadius: BorderRadius.circular(30),
+                            border: Border.all(color: accent.withOpacity(0.35)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.class_rounded,
+                                color: accent,
+                                size: 14,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                selectedClass ?? 'Select class',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(
+                                Icons.keyboard_arrow_down_rounded,
+                                color: Colors.white.withOpacity(0.5),
+                                size: 15,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Greeting
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 28, 20, 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '$greeting,',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.55),
+                          fontSize: 15,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        displayName,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 30,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.1,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Container(
+                            width: 7,
+                            height: 7,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF4ADE80),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Ready to track your class today?',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.45),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // Today's Class card (Start Session) — always shown for teachers
+              if (!isSessionActive)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+                    child: GestureDetector(
+                      onTap: onStartSession,
+                      child: Container(
+                        padding: const EdgeInsets.all(18),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              accent.withOpacity(0.25),
+                              const Color(0xFF0EA5E9).withOpacity(0.15),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: accent.withOpacity(0.3)),
                         ),
                         child: Row(
-                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.class_rounded, color: accent, size: 14),
-                            const SizedBox(width: 6),
-                            Text(
-                              selectedClass ?? 'Select class',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    selectedClass?.toUpperCase() ??
+                                        'NO CLASS SET',
+                                    style: TextStyle(
+                                      color: accent.withOpacity(0.8),
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 1.2,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  const Text(
+                                    'No session started',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Tap to start session',
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.5),
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                            const SizedBox(width: 4),
-                            Icon(
-                              Icons.keyboard_arrow_down_rounded,
-                              color: Colors.white.withOpacity(0.5),
-                              size: 15,
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: accent.withOpacity(0.2),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.play_arrow_rounded,
+                                color: accent,
+                                size: 26,
+                              ),
                             ),
                           ],
                         ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // Greeting
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 28, 20, 0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '$greeting,',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.55),
-                        fontSize: 15,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      displayName,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 30,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.1,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        Container(
-                          width: 7,
-                          height: 7,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF4ADE80),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Ready to track your class today?',
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.45),
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // Today's Class card (Start Session) — always shown for teachers
-            if (!isSessionActive)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-                  child: GestureDetector(
-                    onTap: onStartSession,
-                    child: Container(
-                      padding: const EdgeInsets.all(18),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            accent.withOpacity(0.25),
-                            const Color(0xFF0EA5E9).withOpacity(0.15),
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: accent.withOpacity(0.3)),
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  selectedClass?.toUpperCase() ??
-                                      'NO CLASS SET',
-                                  style: TextStyle(
-                                    color: accent.withOpacity(0.8),
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: 1.2,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                const Text(
-                                  'No session started',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Tap to start session',
-                                  style: TextStyle(
-                                    color: Colors.white.withOpacity(0.5),
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: accent.withOpacity(0.2),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.play_arrow_rounded,
-                              color: accent,
-                              size: 26,
-                            ),
-                          ),
-                        ],
                       ),
                     ),
                   ),
                 ),
-              ),
 
-            // Active session banner
-            if (isSessionActive)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-                  child: GestureDetector(
-                    onTap: onActiveSessionTap,
-                    child: Container(
-                      padding: const EdgeInsets.all(18),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: isAttendanceMarked
-                              ? [
-                                  accent.withOpacity(0.2),
-                                  const Color(0xFF0EA5E9).withOpacity(0.1),
-                                ]
-                              : [
-                                  const Color(0xFF4ADE80).withOpacity(0.2),
-                                  const Color(0xFF22D3EE).withOpacity(0.1),
+              // Active session banner
+              if (isSessionActive)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+                    child: GestureDetector(
+                      onTap: onActiveSessionTap,
+                      child: Container(
+                        padding: const EdgeInsets.all(18),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: isAttendanceMarked
+                                ? [
+                                    accent.withOpacity(0.2),
+                                    const Color(0xFF0EA5E9).withOpacity(0.1),
+                                  ]
+                                : [
+                                    const Color(0xFF4ADE80).withOpacity(0.2),
+                                    const Color(0xFF22D3EE).withOpacity(0.1),
+                                  ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: isAttendanceMarked
+                                ? accent.withOpacity(0.4)
+                                : const Color(0xFF4ADE80).withOpacity(0.4),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: isAttendanceMarked
+                                    ? accent.withOpacity(0.2)
+                                    : const Color(0xFF4ADE80).withOpacity(0.2),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                isAttendanceMarked
+                                    ? Icons.check_circle_rounded
+                                    : Icons.radio_button_checked,
+                                color: isAttendanceMarked
+                                    ? accent
+                                    : const Color(0xFF4ADE80),
+                                size: 22,
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    selectedClass?.toUpperCase() ?? '',
+                                    style: TextStyle(
+                                      color:
+                                          (isAttendanceMarked
+                                                  ? accent
+                                                  : const Color(0xFF4ADE80))
+                                              .withOpacity(0.9),
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 1.2,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    isAttendanceMarked
+                                        ? 'Attendance Completed'
+                                        : 'Session in progress',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
                                 ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
+                              ),
+                            ),
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: isAttendanceMarked
+                                    ? accent
+                                    : const Color(0xFF4ADE80),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ],
                         ),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: isAttendanceMarked
-                              ? accent.withOpacity(0.4)
-                              : const Color(0xFF4ADE80).withOpacity(0.4),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: isAttendanceMarked
-                                  ? accent.withOpacity(0.2)
-                                  : const Color(0xFF4ADE80).withOpacity(0.2),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              isAttendanceMarked
-                                  ? Icons.check_circle_rounded
-                                  : Icons.radio_button_checked,
-                              color: isAttendanceMarked
-                                  ? accent
-                                  : const Color(0xFF4ADE80),
-                              size: 22,
-                            ),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  selectedClass?.toUpperCase() ?? '',
-                                  style: TextStyle(
-                                    color:
-                                        (isAttendanceMarked
-                                                ? accent
-                                                : const Color(0xFF4ADE80))
-                                            .withOpacity(0.9),
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: 1.2,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  isAttendanceMarked
-                                      ? 'Attendance Completed'
-                                      : 'Session in progress',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              color: isAttendanceMarked
-                                  ? accent
-                                  : const Color(0xFF4ADE80),
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                        ],
                       ),
                     ),
                   ),
                 ),
-              ),
 
-            // Quick Actions
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(
-                  20,
-                  isSessionActive ? 32 : 40,
-                  20,
-                  0,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'QUICK ACTIONS',
-                      style: TextStyle(
-                        color: accent,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.4,
+              // Quick Actions
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    20,
+                    isSessionActive ? 32 : 40,
+                    20,
+                    0,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'QUICK ACTIONS',
+                        style: TextStyle(
+                          color: accent,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.4,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    Column(
-                      children: [
-                        _QuickActionCard(
-                          icon: Icons.how_to_reg_rounded,
-                          label: 'View Attendance',
-                          color: const Color(0xFF4ADE80),
-                          onTap: onViewAttendance,
-                        ),
-                        const SizedBox(height: 14),
-                        _QuickActionCard(
-                          icon: Icons.bar_chart_rounded,
-                          label: 'View Progress',
-                          color: const Color(0xFFA78BFA),
-                          onTap: onViewProgress,
-                        ),
-                      ],
-                    ),
-                  ],
+                      const SizedBox(height: 12),
+                      Column(
+                        children: [
+                          // When attendance is saved: show pie-chart card as button
+                          if (isAttendanceMarked)
+                            _HomeAttendanceSummaryCard(
+                              presentCount: presentCount,
+                              totalCount: totalCount,
+                              onTap: onViewAttendance,
+                            )
+                          else
+                            _QuickActionCard(
+                              icon: Icons.how_to_reg_rounded,
+                              label: 'View Attendance',
+                              color: const Color(0xFF4ADE80),
+                              onTap: onViewAttendance,
+                            ),
+                          const SizedBox(height: 14),
+                          _QuickActionCard(
+                            icon: Icons.bar_chart_rounded,
+                            label: 'View Progress',
+                            color: const Color(0xFFA78BFA),
+                            onTap: onViewProgress,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
 
-            const SliverToBoxAdapter(child: SizedBox(height: 28)),
-          ],
+              const SliverToBoxAdapter(child: SizedBox(height: 28)),
+            ],
+          ),
         ),
       ],
     );
@@ -1620,6 +1643,385 @@ class _PlaceholderTab extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 // Quick Action Card
 // ─────────────────────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Home Attendance Summary Card (replaces View Attendance when done)
+// ─────────────────────────────────────────────────────────────────────────────
+class _HomeAttendanceSummaryCard extends StatefulWidget {
+  final int presentCount;
+  final int totalCount;
+  final VoidCallback onTap;
+
+  const _HomeAttendanceSummaryCard({
+    required this.presentCount,
+    required this.totalCount,
+    required this.onTap,
+  });
+
+  @override
+  State<_HomeAttendanceSummaryCard> createState() =>
+      _HomeAttendanceSummaryCardState();
+}
+
+class _HomeAttendanceSummaryCardState extends State<_HomeAttendanceSummaryCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animCtrl;
+  late Animation<double> _sweepAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _animCtrl = AnimationController(
+      duration: const Duration(milliseconds: 1100),
+      vsync: this,
+    );
+    _sweepAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutCubic);
+    _animCtrl.forward();
+  }
+
+  @override
+  void dispose() {
+    _animCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final total = widget.totalCount;
+    final present = widget.presentCount;
+    final absent = total - present;
+    final pct = total > 0 ? (present / total * 100).round() : 0;
+    final presentFrac = total > 0 ? present / total : 0.0;
+
+    const green = Color(0xFF059669); // Emerald 600 (Darker)
+    const red = Color(0xFFE11D48); // Rose 600 (Darker)
+    const cyan = Color(0xFF0EA5E9); // Sky Blue 500
+
+    return GestureDetector(
+      onTap: widget.onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.03),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.white.withOpacity(0.08), width: 1),
+        ),
+        child: Column(
+          children: [
+            // ── Top section: header + donut ─────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+              child: Column(
+                children: [
+                  // Header
+                  Row(
+                    children: [
+                      const Text(
+                        'Attendance',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: green.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.check_rounded, color: green, size: 9),
+                            SizedBox(width: 2),
+                            Text(
+                              'Saved',
+                              style: TextStyle(
+                                color: green,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Spacer(),
+                      Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        color: Colors.white.withOpacity(0.25),
+                        size: 13,
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Donut chart — centred, slightly smaller
+                  AnimatedBuilder(
+                    animation: _sweepAnim,
+                    builder: (context, _) => SizedBox(
+                      width: 110,
+                      height: 110,
+                      child: CustomPaint(
+                        painter: _HomeDonutPainter(
+                          presentFraction: total > 0
+                              ? presentFrac * _sweepAnim.value
+                              : 0,
+                          sweep: _sweepAnim.value,
+                        ),
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '$pct%',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.w900,
+                                  height: 1,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                'attendance',
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.4),
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w500,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Full-width segmented bar
+                  AnimatedBuilder(
+                    animation: _sweepAnim,
+                    builder: (context, _) {
+                      final animPresentFrac = presentFrac * _sweepAnim.value;
+                      return ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: SizedBox(
+                          height: 6,
+                          child: Row(
+                            children: [
+                              if (animPresentFrac > 0)
+                                Flexible(
+                                  flex: (animPresentFrac * 1000).round(),
+                                  child: Container(color: green),
+                                ),
+                              if (animPresentFrac < _sweepAnim.value)
+                                Flexible(
+                                  flex: ((1 - animPresentFrac) * 1000)
+                                      .round()
+                                      .clamp(1, 1000),
+                                  child: Container(color: red.withOpacity(0.7)),
+                                ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+
+                  const SizedBox(height: 4),
+
+                  // Bar labels
+                  Row(
+                    children: [
+                      Text(
+                        'Present  $present',
+                        style: TextStyle(
+                          color: green.withOpacity(0.8),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        'Absent  $absent',
+                        style: TextStyle(
+                          color: red.withOpacity(0.8),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 12),
+
+            // ── Divider ──────────────────────────────────────────────────
+            Divider(
+              height: 1,
+              thickness: 1,
+              color: Colors.white.withOpacity(0.06),
+            ),
+
+            // ── Bottom stat pills row ─────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              child: Row(
+                children: [
+                  _StatPill(
+                    label: 'Total',
+                    value: '$total',
+                    color: cyan,
+                    icon: Icons.groups_rounded,
+                  ),
+                  const SizedBox(width: 8),
+                  _StatPill(
+                    label: 'Present',
+                    value: '$present',
+                    color: green,
+                    icon: Icons.how_to_reg_rounded,
+                  ),
+                  const SizedBox(width: 8),
+                  _StatPill(
+                    label: 'Absent',
+                    value: '$absent',
+                    color: red,
+                    icon: Icons.person_off_rounded,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Stat pill widget for the home attendance card
+class _StatPill extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+  final IconData icon;
+
+  const _StatPill({
+    required this.label,
+    required this.value,
+    required this.color,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withOpacity(0.18)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color.withOpacity(0.85), size: 16),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              style: TextStyle(
+                color: color,
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                height: 1,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              label,
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.4),
+                fontSize: 10,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Donut painter (home screen version)
+class _HomeDonutPainter extends CustomPainter {
+  final double presentFraction;
+  final double sweep;
+
+  const _HomeDonutPainter({required this.presentFraction, required this.sweep});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cx = size.width / 2;
+    final cy = size.height / 2;
+    final radius = (size.width / 2) - 6;
+    const strokeWidth = 11.0;
+    const pi = 3.14159265358979;
+
+    final rect = Rect.fromCircle(center: Offset(cx, cy), radius: radius);
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round
+      ..isAntiAlias = true;
+
+    // Background track
+    paint.color = Colors.white.withOpacity(0.07);
+    canvas.drawCircle(Offset(cx, cy), radius, paint);
+
+    final startAngle = -pi / 2;
+
+    // Absent arc
+    final absentFraction =
+        (1.0 - (sweep > 0 ? presentFraction / sweep : 0)) * sweep;
+    if (absentFraction > 0) {
+      paint.color = const Color(0xFFE11D48); // Darker Rose
+      canvas.drawArc(
+        rect,
+        startAngle + presentFraction * 2 * pi,
+        absentFraction * 2 * pi,
+        false,
+        paint,
+      );
+    }
+
+    // Present arc
+    if (presentFraction > 0) {
+      paint.color = const Color(0xFF059669); // Darker Emerald
+      canvas.drawArc(rect, startAngle, presentFraction * 2 * pi, false, paint);
+    }
+
+    // 100% edge case
+    if (presentFraction >= sweep && sweep > 0.99) {
+      paint.color = const Color(0xFF059669); // Darker Emerald
+      canvas.drawCircle(Offset(cx, cy), radius, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_HomeDonutPainter old) =>
+      old.presentFraction != presentFraction || old.sweep != sweep;
+}
+
 class _QuickActionCard extends StatelessWidget {
   final IconData icon;
   final String label;
