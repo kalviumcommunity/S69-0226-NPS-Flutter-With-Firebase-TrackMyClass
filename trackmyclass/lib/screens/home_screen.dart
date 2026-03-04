@@ -324,12 +324,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         {
           'attendanceMarked': true,
           'sessionSubmitted': true,
+          // 'active' remains true for 3 seconds so banner shows "Completed"
           'attendanceCount': 0,
           'totalStudents': studentsSnap.docs.length,
         },
       );
 
       await batch.commit();
+
+      // After 3 seconds, end the session to revert home card to "Start Session"
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) {
+          FirebaseFirestore.instance
+              .collection('sessions')
+              .doc(sessionId)
+              .update({'active': false});
+        }
+      });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
