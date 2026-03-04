@@ -894,176 +894,647 @@ class _HomeTab extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 // Profile Tab
 // ─────────────────────────────────────────────────────────────────────────────
-class _ProfileTab extends StatelessWidget {
+class _ProfileTab extends StatefulWidget {
   final User? user;
   final VoidCallback onSignOut;
 
   const _ProfileTab({required this.user, required this.onSignOut});
 
   @override
-  Widget build(BuildContext context) {
-    const backgroundTop = Color(0xFF0B1220);
-    const backgroundBottom = Color(0xFF111A2E);
-    const accent = Color(0xFF22D3EE);
+  State<_ProfileTab> createState() => _ProfileTabState();
+}
 
-    final displayName = () {
-      final n = user?.displayName;
-      return (n != null && n.isNotEmpty) ? n : 'Teacher';
-    }();
-    final email = user?.email ?? '';
+class _ProfileTabState extends State<_ProfileTab> {
+  static const _backgroundTop = Color(0xFF0B1220);
+  static const _backgroundBottom = Color(0xFF111A2E);
+  static const _accent = Color(0xFF22D3EE);
+  static const _cardBg = Color(0xFF1A2640);
+
+  Map<String, dynamic>? _firestoreData;
+  bool _firestoreLoading = true;
+  StreamSubscription<DocumentSnapshot>? _userSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _startStream();
+  }
+
+  void _startStream() {
+    final uid = widget.user?.uid;
+    if (uid == null) {
+      setState(() => _firestoreLoading = false);
+      return;
+    }
+    _userSub = FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .snapshots()
+        .listen(
+          (doc) {
+            if (mounted) {
+              setState(() {
+                _firestoreData = doc.exists ? doc.data() : null;
+                _firestoreLoading = false;
+              });
+            }
+          },
+          onError: (_) {
+            if (mounted) setState(() => _firestoreLoading = false);
+          },
+        );
+  }
+
+  @override
+  void dispose() {
+    _userSub?.cancel();
+    super.dispose();
+  }
+
+  // Detect if user signed in with email/password (not Google)
+  bool get _isEmailPasswordUser {
+    final providerData = widget.user?.providerData ?? [];
+    return providerData.any((p) => p.providerId == 'password');
+  }
+
+  String get _displayName {
+    final n = widget.user?.displayName;
+    if (n != null && n.isNotEmpty) return n;
+    return (_firestoreData?['name'] as String?) ?? 'Teacher';
+  }
+
+  String get _email => widget.user?.email ?? '';
+
+  String get _subject => (_firestoreData?['subject'] as String?) ?? '';
+
+  String get _memberSince {
+    final ts = _firestoreData?['createdAt'];
+    if (ts == null) return '—';
+    DateTime dt;
+    if (ts is Timestamp) {
+      dt = ts.toDate();
+    } else {
+      return '—';
+    }
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${months[dt.month - 1]} ${dt.year}';
+  }
+
+  bool get _emailVerified =>
+      widget.user?.emailVerified ??
+      (_firestoreData?['emailVerified'] as bool? ?? false);
+
+  // ── Send password reset to current user's email ──
+  Future<void> _sendPasswordReset() async {
+    final email = _email;
+    if (email.isEmpty) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: _cardBg,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Reset Password?',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+        ),
+        content: Text(
+          'A password reset link will be sent to\n$email',
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.6),
+            fontSize: 13,
+            height: 1.5,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white.withOpacity(0.5)),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text(
+              'Send Link',
+              style: TextStyle(color: _accent, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Password reset link sent to $email'),
+          backgroundColor: const Color(0xFF4ADE80),
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Failed to send reset link. Try again.'),
+          backgroundColor: const Color(0xFFFF6B6B),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final avatarInitials = _displayName.isNotEmpty
+        ? _displayName.trim().split(' ').map((w) => w[0]).take(2).join()
+        : 'T';
 
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          colors: [backgroundTop, backgroundBottom],
+          colors: [_backgroundTop, _backgroundBottom],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
       ),
-      child: CustomScrollView(
-        physics: const ClampingScrollPhysics(),
-        slivers: [
-          // Header
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-              child: Text(
-                'PROFILE',
-                style: TextStyle(
-                  color: accent,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.4,
+      child: ScrollConfiguration(
+        behavior: ScrollConfiguration.of(context).copyWith(overscroll: false),
+        child: CustomScrollView(
+          physics: const ClampingScrollPhysics(),
+          slivers: [
+            // ── Page title ───────────────────────────────────────────────────
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+                child: Text(
+                  'PROFILE',
+                  style: TextStyle(
+                    color: _accent,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.4,
+                  ),
                 ),
               ),
             ),
-          ),
 
-          // Avatar + name card
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-              child: Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1A2640),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white.withOpacity(0.07)),
-                ),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 30,
-                      backgroundColor: accent.withOpacity(0.2),
-                      child: Text(
-                        displayName.isNotEmpty
-                            ? displayName[0].toUpperCase()
-                            : 'T',
-                        style: const TextStyle(
-                          color: Color(0xFF22D3EE),
-                          fontSize: 24,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
+            // ── Hero Card ────────────────────────────────────────────────────
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        _accent.withOpacity(0.18),
+                        const Color(0xFF0EA5E9).withOpacity(0.10),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            displayName,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: _accent.withOpacity(0.25)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: _accent.withOpacity(0.08),
+                        blurRadius: 20,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      children: [
+                        // Avatar
+                        Container(
+                          width: 88,
+                          height: 88,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [_accent, const Color(0xFF0EA5E9)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: _accent.withOpacity(0.45),
+                                blurRadius: 20,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
+                          ),
+                          child: Center(
+                            child: Text(
+                              avatarInitials.toUpperCase(),
+                              style: const TextStyle(
+                                color: Color(0xFF0B1220),
+                                fontSize: 28,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 1,
+                              ),
                             ),
                           ),
-                          const SizedBox(height: 3),
-                          Text(
-                            email,
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.45),
-                              fontSize: 12,
+                        ),
+                        const SizedBox(height: 16),
+                        // Name
+                        Text(
+                          _displayName,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.2,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 6),
+                        // Email
+                        Text(
+                          _email,
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.5),
+                            fontSize: 13,
+                          ),
+                          textAlign: TextAlign.center,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        // Subject badge — only visible when subject is set
+                        if (_subject.isNotEmpty) ...[
+                          const SizedBox(height: 14),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 6,
                             ),
-                            overflow: TextOverflow.ellipsis,
+                            decoration: BoxDecoration(
+                              color: _accent.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(30),
+                              border: Border.all(
+                                color: _accent.withOpacity(0.3),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.menu_book_rounded,
+                                  color: _accent,
+                                  size: 14,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  _subject,
+                                  style: const TextStyle(
+                                    color: _accent,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 0.3,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            // ── About Me section ─────────────────────────────────────────────
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 28, 20, 0),
+                child: Text(
+                  'ABOUT ME',
+                  style: TextStyle(
+                    color: _accent,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.4,
+                  ),
+                ),
+              ),
+            ),
+
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                child: _firestoreLoading
+                    ? Container(
+                        height: 180,
+                        decoration: BoxDecoration(
+                          color: _cardBg,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.07),
+                          ),
+                        ),
+                        child: const Center(
+                          child: CircularProgressIndicator(
+                            color: _accent,
+                            strokeWidth: 2,
+                          ),
+                        ),
+                      )
+                    : Container(
+                        decoration: BoxDecoration(
+                          color: _cardBg,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.07),
+                          ),
+                        ),
+                        child: Column(
+                          children: [
+                            _InfoRow(
+                              icon: Icons.person_outline_rounded,
+                              label: 'Full Name',
+                              value: _displayName,
+                              iconColor: _accent,
+                              isFirst: true,
+                            ),
+                            _InfoRow(
+                              icon: Icons.email_outlined,
+                              label: 'Email',
+                              value: _email.isNotEmpty ? _email : '—',
+                              iconColor: const Color(0xFFA78BFA),
+                            ),
+                            if (_subject.isNotEmpty)
+                              _InfoRow(
+                                icon: Icons.menu_book_rounded,
+                                label: 'Subject',
+                                value: _subject,
+                                iconColor: const Color(0xFF4ADE80),
+                              ),
+                            _InfoRow(
+                              icon: Icons.calendar_month_rounded,
+                              label: 'Member Since',
+                              value: _memberSince,
+                              iconColor: const Color(0xFFFBBF24),
+                            ),
+                            _InfoRow(
+                              icon: _emailVerified
+                                  ? Icons.verified_rounded
+                                  : Icons.cancel_rounded,
+                              label: 'Email Verified',
+                              value: _emailVerified
+                                  ? 'Verified'
+                                  : 'Not Verified',
+                              iconColor: _emailVerified
+                                  ? const Color(0xFF4ADE80)
+                                  : const Color(0xFFFF6B6B),
+                              valueColor: _emailVerified
+                                  ? const Color(0xFF4ADE80)
+                                  : const Color(0xFFFF6B6B),
+                              isLast: true,
+                            ),
+                          ],
+                        ),
+                      ),
+              ),
+            ),
+
+            // ── Account section ──────────────────────────────────────────────
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 28, 20, 0),
+                child: Text(
+                  'ACCOUNT',
+                  style: TextStyle(
+                    color: _accent,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.4,
+                  ),
+                ),
+              ),
+            ),
+
+            // Change Password — only shown for email/password users
+            if (_isEmailPasswordUser)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                  child: GestureDetector(
+                    onTap: _sendPasswordReset,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _cardBg,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.07),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFBBF24).withOpacity(0.13),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(
+                              Icons.lock_reset_rounded,
+                              color: Color(0xFFFBBF24),
+                              size: 18,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          const Expanded(
+                            child: Text(
+                              'Change Password',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            color: Colors.white.withOpacity(0.3),
+                            size: 20,
                           ),
                         ],
                       ),
                     ),
+                  ),
+                ),
+              ),
+
+            // Sign out
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  _isEmailPasswordUser ? 12 : 12,
+                  20,
+                  0,
+                ),
+                child: GestureDetector(
+                  onTap: widget.onSignOut,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF2A1A1A),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: const Color(0xFFFF6B6B).withOpacity(0.3),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFF6B6B).withOpacity(0.13),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.logout_rounded,
+                            color: Color(0xFFFF6B6B),
+                            size: 18,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        const Expanded(
+                          child: Text(
+                            'Sign out',
+                            style: TextStyle(
+                              color: Color(0xFFFF6B6B),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            const SliverToBoxAdapter(child: SizedBox(height: 40)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Profile Info Row
+// ─────────────────────────────────────────────────────────────────────────────
+class _InfoRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color iconColor;
+  final Color? valueColor;
+  final bool isFirst;
+  final bool isLast;
+
+  const _InfoRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.iconColor,
+    this.valueColor,
+    this.isFirst = false,
+    this.isLast = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: iconColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: iconColor, size: 16),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.4),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      value,
+                      style: TextStyle(
+                        color: valueColor ?? Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ],
                 ),
               ),
-            ),
+            ],
           ),
-
-          // Account section label
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 28, 20, 0),
-              child: Text(
-                'ACCOUNT',
-                style: TextStyle(
-                  color: accent,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.4,
-                ),
-              ),
-            ),
+        ),
+        if (!isLast)
+          Divider(
+            height: 1,
+            indent: 56,
+            endIndent: 16,
+            color: Colors.white.withOpacity(0.06),
           ),
-
-          // Sign out button
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-              child: GestureDetector(
-                onTap: onSignOut,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 14,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF2A1A1A),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: const Color(0xFFFF6B6B).withOpacity(0.3),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFF6B6B).withOpacity(0.13),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(
-                          Icons.logout_rounded,
-                          color: Color(0xFFFF6B6B),
-                          size: 18,
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      const Text(
-                        'Sign out',
-                        style: TextStyle(
-                          color: Color(0xFFFF6B6B),
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-          const SliverToBoxAdapter(child: SizedBox(height: 40)),
-        ],
-      ),
+      ],
     );
   }
 }
