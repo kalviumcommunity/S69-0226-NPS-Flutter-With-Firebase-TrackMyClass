@@ -151,11 +151,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                   'rollNumber': sData['rollNumber'] ?? '',
                 });
 
-                if (!_attendanceStatus.containsKey(doc.id)) {
-                  _attendanceStatus[doc.id] = _attendanceMarked
-                      ? (attendanceMap[doc.id] ?? false)
-                      : false;
-                }
+                // Always sync with the latest DB state on fresh load
+                _attendanceStatus[doc.id] = _attendanceMarked
+                    ? (attendanceMap[doc.id] ?? false)
+                    : false;
               }
 
               loadedStudents.sort((a, b) {
@@ -213,7 +212,11 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     try {
       final batch = FirebaseFirestore.instance.batch();
 
+      int presentCount = 0;
       for (final student in _students) {
+        final isPresent = _attendanceStatus[student['id']] == true;
+        if (isPresent) presentCount++;
+
         batch.set(
           FirebaseFirestore.instance
               .collection('sessions')
@@ -221,9 +224,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
               .collection('attendance')
               .doc(student['id']),
           {
-            'status': _attendanceStatus[student['id']] == true
-                ? 'Present'
-                : 'Absent',
+            'status': isPresent ? 'Present' : 'Absent',
             'studentName': student['name'],
             'rollNumber': student['rollNumber'],
             'timestamp': FieldValue.serverTimestamp(),
@@ -238,6 +239,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           'sessionSubmitted': true,
           // 'active' remains true for a few seconds so UI shows "Completed"
           'attendanceCount': _attendanceStatus.values.where((v) => v).length,
+          'attendanceCount': presentCount,
           'totalStudents': _students.length,
         },
       );
