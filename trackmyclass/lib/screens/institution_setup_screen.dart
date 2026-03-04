@@ -12,19 +12,29 @@ class InstitutionSetupScreen extends StatefulWidget {
 
 class _InstitutionSetupScreenState extends State<InstitutionSetupScreen> {
   final TextEditingController _institutionController = TextEditingController();
+  final TextEditingController _subjectController = TextEditingController();
   bool _isSubmitting = false;
 
   @override
   void dispose() {
     _institutionController.dispose();
+    _subjectController.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
-    final name = _institutionController.text.trim();
-    if (name.isEmpty) {
+    final institutionName = _institutionController.text.trim();
+    final subject = _subjectController.text.trim();
+
+    if (institutionName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter your institution name')),
+      );
+      return;
+    }
+    if (subject.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter the subject you teach')),
       );
       return;
     }
@@ -35,7 +45,8 @@ class _InstitutionSetupScreenState extends State<InstitutionSetupScreen> {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
         await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-          'institutionName': name,
+          'institutionName': institutionName,
+          'subject': subject,
         }, SetOptions(merge: true));
 
         if (!mounted) return;
@@ -48,7 +59,7 @@ class _InstitutionSetupScreenState extends State<InstitutionSetupScreen> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Error saving institution: $e')));
+        ).showSnackBar(SnackBar(content: Text('Error saving details: $e')));
       }
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
@@ -74,23 +85,24 @@ class _InstitutionSetupScreenState extends State<InstitutionSetupScreen> {
           ),
         ),
         child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 40),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Container(
-                  height: 80,
-                  width: 80,
-                  decoration: BoxDecoration(
-                    color: accent.withOpacity(0.15),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.business_rounded,
-                    color: accent,
-                    size: 40,
+                Center(
+                  child: Container(
+                    height: 80,
+                    width: 80,
+                    decoration: BoxDecoration(
+                      color: accent.withOpacity(0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.business_rounded,
+                      color: accent,
+                      size: 40,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 32),
@@ -105,7 +117,7 @@ class _InstitutionSetupScreenState extends State<InstitutionSetupScreen> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  "Enter your institution or school name to finalize your account.",
+                  "Tell us about your institution and what you teach.",
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.6),
@@ -113,6 +125,8 @@ class _InstitutionSetupScreenState extends State<InstitutionSetupScreen> {
                   ),
                 ),
                 const SizedBox(height: 48),
+
+                // Institution Name Field
                 const Text(
                   "Institution Name",
                   style: TextStyle(
@@ -132,6 +146,7 @@ class _InstitutionSetupScreenState extends State<InstitutionSetupScreen> {
                   child: TextField(
                     controller: _institutionController,
                     style: const TextStyle(color: Colors.white),
+                    textCapitalization: TextCapitalization.words,
                     decoration: InputDecoration(
                       hintText: "e.g. Greenwood High, ABC Academy",
                       hintStyle: TextStyle(
@@ -149,7 +164,48 @@ class _InstitutionSetupScreenState extends State<InstitutionSetupScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 20),
+
+                // Subject Field
+                const Text(
+                  "Subject You Teach",
+                  style: TextStyle(
+                    color: accent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: fieldBg,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: Colors.white.withOpacity(0.12)),
+                  ),
+                  child: TextField(
+                    controller: _subjectController,
+                    style: const TextStyle(color: Colors.white),
+                    textCapitalization: TextCapitalization.words,
+                    decoration: InputDecoration(
+                      hintText: "e.g. Mathematics, Science, History",
+                      hintStyle: TextStyle(
+                        color: Colors.white.withOpacity(0.35),
+                      ),
+                      prefixIcon: Icon(
+                        Icons.book_outlined,
+                        color: accent.withOpacity(0.8),
+                      ),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 16,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 40),
+
                 SizedBox(
                   height: 56,
                   child: ElevatedButton(

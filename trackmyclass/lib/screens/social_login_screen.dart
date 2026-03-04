@@ -392,7 +392,6 @@ class _LoginModalState extends State<_LoginModal> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _subjectController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
@@ -402,7 +401,6 @@ class _LoginModalState extends State<_LoginModal> {
   @override
   void dispose() {
     _nameController.dispose();
-    _subjectController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
@@ -460,12 +458,11 @@ class _LoginModalState extends State<_LoginModal> {
 
   Future<void> _handleRegister() async {
     final name = _nameController.text.trim();
-    final subject = _subjectController.text.trim();
     final email = _emailController.text.trim();
     final password = _passwordController.text;
     final confirmPassword = _confirmPasswordController.text;
 
-    if (name.isEmpty || subject.isEmpty || email.isEmpty || password.isEmpty) {
+    if (name.isEmpty || email.isEmpty || password.isEmpty) {
       _showMessage('Please fill in all fields.');
       return;
     }
@@ -517,7 +514,6 @@ class _LoginModalState extends State<_LoginModal> {
           .doc(user.uid)
           .set({
             'name': name,
-            'subject': subject,
             'email': email,
             'emailVerified': false,
             'createdAt': FieldValue.serverTimestamp(),
@@ -578,13 +574,14 @@ class _LoginModalState extends State<_LoginModal> {
 
       if (!mounted) return;
 
-      final data = userDoc.data() as Map<String, dynamic>?;
+      final data = userDoc.data();
       final hasInstitution =
           data != null &&
-          data.containsKey('institutionName') &&
-          (data['institutionName'] as String).trim().isNotEmpty;
+          data['institutionName']?.toString().trim().isNotEmpty == true;
+      final hasSubject =
+          data != null && data['subject']?.toString().trim().isNotEmpty == true;
 
-      if (!hasInstitution) {
+      if (!hasInstitution || !hasSubject) {
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => const InstitutionSetupScreen()),
           (_) => false,
@@ -656,13 +653,14 @@ class _LoginModalState extends State<_LoginModal> {
 
       if (!mounted) return;
 
-      final data = userDoc.data() as Map<String, dynamic>?;
+      final data = userDoc.data();
       final hasInstitution =
           data != null &&
-          data.containsKey('institutionName') &&
-          (data['institutionName'] as String).trim().isNotEmpty;
+          data['institutionName']?.toString().trim().isNotEmpty == true;
+      final hasSubject =
+          data != null && data['subject']?.toString().trim().isNotEmpty == true;
 
-      if (!hasInstitution) {
+      if (!hasInstitution || !hasSubject) {
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => const InstitutionSetupScreen()),
           (_) => false,
@@ -813,44 +811,6 @@ class _LoginModalState extends State<_LoginModal> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 14),
-                  const Text(
-                    "Subject",
-                    style: TextStyle(
-                      color: accent,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: fieldBg,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: Colors.white.withOpacity(0.12)),
-                    ),
-                    child: TextField(
-                      controller: _subjectController,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        hintText: "e.g., Mathematics, Science",
-                        hintStyle: TextStyle(
-                          color: Colors.white.withOpacity(0.35),
-                        ),
-                        prefixIcon: Icon(
-                          Icons.book_outlined,
-                          color: accent.withOpacity(0.8),
-                        ),
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 16,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
                 ],
                 const Text(
                   "Email Address",

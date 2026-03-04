@@ -87,9 +87,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             if (doc.exists && mounted) {
               final data = doc.data();
               final instName = data?['institutionName'] as String?;
+              final subject = data?['subject'] as String?;
 
-              // If institution is missing, redirect to setup
-              if (instName == null || instName.isEmpty) {
+              // If institution or subject is missing, redirect to setup
+              if (instName == null ||
+                  instName.isEmpty ||
+                  subject == null ||
+                  subject.isEmpty) {
                 Navigator.of(context).pushAndRemoveUntil(
                   MaterialPageRoute(
                     builder: (_) => const InstitutionSetupScreen(),
