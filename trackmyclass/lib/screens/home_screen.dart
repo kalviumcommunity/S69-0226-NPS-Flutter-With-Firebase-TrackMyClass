@@ -36,6 +36,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   // ── Class state ────────────────────────────────────────────────────────────
   // Pre-populated with defaults so the UI loads immediately.
   List<String> _classes = List<String>.from(_kDefaultClasses);
+  // Store remote classes with their Firestore IDs for editing/deletion
+  List<Map<String, dynamic>> _remoteClassesData = [];
   String? _selectedClass = _kDefaultClasses.first;
   bool _classesLoading = false; // NOT true — we show defaults instantly
   String? _teacherSubject;
@@ -141,22 +143,31 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           .get()
           .timeout(const Duration(seconds: 8));
 
-      final remote = snapshot.docs
-          .map((d) => (d.data()['name'] as String?) ?? d.id)
-          .where((n) => n.isNotEmpty)
-          .toList();
+      final List<Map<String, dynamic>> remoteData = snapshot.docs.map((d) {
+        return <String, dynamic>{
+          'id': d.id,
+          'name': (d.data()['name'] as String?) ?? d.id,
+        };
+      }).toList();
 
       if (!mounted) return;
 
       setState(() {
-        // Merge: keep defaults, add any remote that aren't already present
-        final merged = List<String>.from(_kDefaultClasses);
-        for (final r in remote) {
-          if (!merged.contains(r)) merged.add(r);
+        _remoteClassesData = remoteData;
+        final remoteNames = remoteData.map((d) => d['name'] as String).toList();
+
+        // If user has ANY remote classes, use ONLY those (satisfies "instead of Section 1, 2")
+        // If they have none, show the defaults.
+        if (remoteNames.isNotEmpty) {
+          _classes = remoteNames;
+        } else {
+          _classes = List<String>.from(_kDefaultClasses);
         }
-        _classes = merged;
+
         // Keep selected class unless it got removed somehow
-        _selectedClass ??= merged.first;
+        if (_selectedClass == null || !_classes.contains(_selectedClass)) {
+          _selectedClass = _classes.isNotEmpty ? _classes.first : null;
+        }
       });
     } catch (_) {
       // Firestore unavailable — defaults are already shown, nothing to do
@@ -234,11 +245,19 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) =>
-          _ClassPickerSheet(classes: _classes, selected: _selectedClass ?? ''),
+      builder: (_) => _ClassPickerSheet(
+        classes: _classes,
+        remoteClassesData: _remoteClassesData,
+        selected: _selectedClass ?? '',
+      ),
     );
 
     if (result == null || !mounted) return;
+
+    if (result.renameTo != null && result.renameId != null) {
+      _renameClass(result.renameId!, result.oldName!, result.renameTo!);
+      return;
+    }
 
     setState(() {
       if (result.newClass != null &&
@@ -256,13 +275,90 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               'createdAt': FieldValue.serverTimestamp(),
               'createdBy': _user?.uid,
             })
-            .then((_) {})
+            .then((_) => _mergeFirestoreClasses()) // Refresh IDs
             .catchError((_) => null); // silent fail
       } else if (result.selected != null) {
         _selectedClass = result.selected;
         _sessionsStream = _buildSessionsStream(_selectedClass);
       }
     });
+  }
+
+  Future<void> _renameClass(String? classId, String oldName, String newName) async {
+    try {
+      if (classId != null) {
+        // 1. Update existing class
+        await FirebaseFirestore.instance
+            .collection('classes')
+            .doc(classId)
+            .update({'name': newName});
+      } else {
+        // 1. Create new class from a default placeholder
+        await FirebaseFirestore.instance.collection('classes').add({
+          'name': newName,
+          'institutionName': _institutionName,
+          'createdAt': FieldValue.serverTimestamp(),
+          'createdBy': _user?.uid,
+        });
+      }
+
+      // 2. Cascading update for students using the old name
+      final students = await FirebaseFirestore.instance
+          .collection('students')
+          .where('institutionName', isEqualTo: _institutionName)
+          .where('class', isEqualTo: oldName)
+          .get();
+
+      if (students.docs.isNotEmpty) {
+        final batch = FirebaseFirestore.instance.batch();
+        for (var doc in students.docs) {
+          batch.update(doc.reference, {'class': newName});
+        }
+        await batch.commit();
+      }
+
+      // 3. Cascading update for sessions
+      final sessions = await FirebaseFirestore.instance
+          .collection('sessions')
+          .where('institutionName', isEqualTo: _institutionName)
+          .where('class', isEqualTo: oldName)
+          .get();
+
+      if (sessions.docs.isNotEmpty) {
+        final batch = FirebaseFirestore.instance.batch();
+        for (var doc in sessions.docs) {
+          batch.update(doc.reference, {'class': newName});
+        }
+        await batch.commit();
+      }
+
+      // Update local state
+      if (_selectedClass == oldName) {
+        setState(() {
+          _selectedClass = newName;
+          _sessionsStream = _buildSessionsStream(_selectedClass);
+        });
+      }
+      _mergeFirestoreClasses();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Class renamed to "$newName"'),
+            backgroundColor: const Color(0xFF4ADE80),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error renaming class: $e'),
+            backgroundColor: const Color(0xFFFF6B6B),
+          ),
+        );
+      }
+    }
   }
 
   // ── Start Session ──────────────────────────────────────────────────────────
@@ -2161,8 +2257,17 @@ class _NavItem extends StatelessWidget {
 class _ClassPickerResult {
   final String? selected; // an existing class was tapped
   final String? newClass; // a brand-new class name was added
+  final String? renameId; // document ID to rename
+  final String? renameTo; // new name for renameId
+  final String? oldName; // old name for cascading logic
 
-  const _ClassPickerResult({this.selected, this.newClass});
+  const _ClassPickerResult({
+    this.selected,
+    this.newClass,
+    this.renameId,
+    this.renameTo,
+    this.oldName,
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2170,9 +2275,14 @@ class _ClassPickerResult {
 // ─────────────────────────────────────────────────────────────────────────────
 class _ClassPickerSheet extends StatefulWidget {
   final List<String> classes;
+  final List<Map<String, dynamic>> remoteClassesData;
   final String selected;
 
-  const _ClassPickerSheet({required this.classes, required this.selected});
+  const _ClassPickerSheet({
+    required this.classes,
+    required this.remoteClassesData,
+    required this.selected,
+  });
 
   @override
   State<_ClassPickerSheet> createState() => _ClassPickerSheetState();
@@ -2273,6 +2383,93 @@ class _ClassPickerSheetState extends State<_ClassPickerSheet> {
     }
   }
 
+  Future<void> _showRenameDialog(String? classId, String oldName) async {
+    final controller = TextEditingController(text: oldName);
+    const accent = Color(0xFF22D3EE);
+
+    final result = await showDialog<String>(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A2640),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Rename Class',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Enter a new name for $oldName',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.55),
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F1A2E),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: accent.withOpacity(0.4)),
+              ),
+              child: TextField(
+                controller: controller,
+                autofocus: true,
+                style: const TextStyle(color: Colors.white),
+                textCapitalization: TextCapitalization.words,
+                decoration: InputDecoration(
+                  hintText: 'New Name',
+                  hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                ),
+                onSubmitted: (v) {
+                  if (v.trim().isNotEmpty) Navigator.of(ctx).pop(v.trim());
+                },
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white.withOpacity(0.5)),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              final v = controller.text.trim();
+              if (v.isNotEmpty) Navigator.of(ctx).pop(v);
+            },
+            child: const Text(
+              'Rename',
+              style: TextStyle(
+                color: Color(0xFF22D3EE),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && result.isNotEmpty && result != oldName && mounted) {
+      Navigator.of(context).pop(_ClassPickerResult(
+        renameId: classId,
+        renameTo: result,
+        oldName: oldName,
+      ));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     const accent = Color(0xFF22D3EE);
@@ -2357,57 +2554,107 @@ class _ClassPickerSheetState extends State<_ClassPickerSheet> {
               child: Column(
                 children: _localClasses.map((cls) {
                   final isSelected = cls == _currentSelected;
-                  return GestureDetector(
-                    onTap: () => Navigator.of(
-                      context,
-                    ).pop(_ClassPickerResult(selected: cls)),
-                    child: Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
-                      ),
-                      decoration: BoxDecoration(
+                  // Check if this is a remote class (has an ID)
+                  final remoteMatch = widget.remoteClassesData.where(
+                    (d) => d['name'] == cls,
+                  ).firstOrNull;
+                  final classId = remoteMatch?['id'] as String?;
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? accent.withOpacity(0.12)
+                          : const Color(0xFF1A2640),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
                         color: isSelected
-                            ? accent.withOpacity(0.12)
-                            : const Color(0xFF1A2640),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: isSelected
-                              ? accent.withOpacity(0.4)
-                              : Colors.white.withOpacity(0.07),
-                        ),
+                            ? accent.withOpacity(0.4)
+                            : Colors.white.withOpacity(0.07),
                       ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.class_rounded,
-                            color: isSelected
-                                ? accent
-                                : Colors.white.withOpacity(0.4),
-                            size: 18,
-                          ),
-                          const SizedBox(width: 12),
-                          Text(
-                            cls,
-                            style: TextStyle(
+                    ),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(14),
+                      onTap: () => Navigator.of(
+                        context,
+                      ).pop(_ClassPickerResult(selected: cls)),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 14,
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.class_rounded,
                               color: isSelected
-                                  ? Colors.white
-                                  : Colors.white.withOpacity(0.7),
-                              fontSize: 14,
-                              fontWeight: isSelected
-                                  ? FontWeight.w700
-                                  : FontWeight.w400,
-                            ),
-                          ),
-                          const Spacer(),
-                          if (isSelected)
-                            const Icon(
-                              Icons.check_circle_rounded,
-                              color: Color(0xFF22D3EE),
+                                  ? accent
+                                  : Colors.white.withOpacity(0.4),
                               size: 18,
                             ),
-                        ],
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                cls,
+                                style: TextStyle(
+                                  color: isSelected
+                                      ? Colors.white
+                                      : Colors.white.withOpacity(0.7),
+                                  fontSize: 14,
+                                  fontWeight: isSelected
+                                      ? FontWeight.w700
+                                      : FontWeight.w400,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (classId != null) ...[
+                              const SizedBox(width: 8),
+                              GestureDetector(
+                                onTap: () => _showRenameDialog(classId, cls),
+                                child: Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.05),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    Icons.edit_rounded,
+                                    color: Colors.white.withOpacity(0.4),
+                                    size: 14,
+                                  ),
+                                ),
+                              ),
+                            ] else ...[
+                              // For default classes (no ID yet)
+                              const SizedBox(width: 8),
+                              GestureDetector(
+                                onTap: () => _showRenameDialog(null, cls),
+                                child: Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.05),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    Icons.edit_rounded,
+                                    color: Colors.white.withOpacity(0.4),
+                                    size: 14,
+                                  ),
+                                ),
+                              ),
+                            ],
+                            const SizedBox(width: 12),
+                            if (isSelected)
+                              const Icon(
+                                Icons.check_circle_rounded,
+                                color: Color(0xFF22D3EE),
+                                size: 18,
+                              )
+                            else
+                              const SizedBox(width: 18),
+                          ],
+                        ),
                       ),
                     ),
                   );
