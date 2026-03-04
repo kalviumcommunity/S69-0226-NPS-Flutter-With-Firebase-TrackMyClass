@@ -5,11 +5,13 @@ import 'package:flutter/material.dart';
 class AttendanceScreen extends StatefulWidget {
   final String className;
   final String sessionId;
+  final String institutionName;
 
   const AttendanceScreen({
     super.key,
     required this.className,
     required this.sessionId,
+    required this.institutionName,
   });
 
   @override
@@ -42,6 +44,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     // 1. Subscribe to students stream — shows data as soon as it arrives
     _studentsSub = FirebaseFirestore.instance
         .collection('students')
+        .where('institutionName', isEqualTo: widget.institutionName)
         .where('class', isEqualTo: widget.className)
         .snapshots()
         .listen(
@@ -133,6 +136,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       _studentsSub?.cancel();
       _studentsSub = FirebaseFirestore.instance
           .collection('students')
+          .where('institutionName', isEqualTo: widget.institutionName)
           .where('class', isEqualTo: widget.className)
           .snapshots()
           .listen(
@@ -503,6 +507,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                     'name': name,
                     'rollNumber': roll,
                     'class': widget.className,
+                    'institutionName': widget.institutionName,
                     'createdAt': FieldValue.serverTimestamp(),
                   });
                 } catch (e) {
@@ -643,7 +648,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                               );
                               return;
                             }
-                            setInnerState(() => isAdding = true);
                             try {
                               await FirebaseFirestore.instance
                                   .collection('students')
@@ -651,10 +655,13 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                                     'name': name,
                                     'rollNumber': roll,
                                     'class': widget.className,
+                                    'institutionName': widget.institutionName,
                                     'createdAt': FieldValue.serverTimestamp(),
                                   });
-                              if (mounted)
+                              if (mounted) {
                                 setInnerState(() => isAdding = false);
+                                Navigator.of(context).pop();
+                              }
                             } catch (e) {
                               if (mounted) {
                                 setInnerState(() => isAdding = false);

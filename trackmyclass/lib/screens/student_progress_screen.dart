@@ -9,12 +9,14 @@ class StudentProgressScreen extends StatefulWidget {
   final String studentId;
   final String studentName;
   final String? teacherSubject;
+  final String institutionName;
 
   const StudentProgressScreen({
     super.key,
     required this.studentId,
     required this.studentName,
     this.teacherSubject,
+    required this.institutionName,
   });
 
   @override
@@ -483,6 +485,7 @@ class _StudentProgressScreenState extends State<StudentProgressScreen> {
                     'subject': subject,
                     'score': score,
                     'totalMarks': total,
+                    'institutionName': widget.institutionName,
                     'date': FieldValue.serverTimestamp(),
                     'addedBy': FirebaseAuth.instance.currentUser?.uid ?? '',
                   })
