@@ -1686,6 +1686,15 @@ class _HomeAttendanceSummaryCardState extends State<_HomeAttendanceSummaryCard>
   }
 
   @override
+  void didUpdateWidget(_HomeAttendanceSummaryCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.presentCount != widget.presentCount ||
+        oldWidget.totalCount != widget.totalCount) {
+      _animCtrl.forward(from: 0.0);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final total = widget.totalCount;
     final present = widget.presentCount;
