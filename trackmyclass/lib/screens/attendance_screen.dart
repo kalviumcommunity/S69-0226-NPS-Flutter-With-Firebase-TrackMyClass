@@ -237,15 +237,26 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         {
           'attendanceMarked': true,
           'sessionSubmitted': true,
+          // 'active' remains true for a few seconds so UI shows "Completed"
+          'attendanceCount': _attendanceStatus.values.where((v) => v).length,
           'attendanceCount': presentCount,
           'totalStudents': _students.length,
         },
       );
 
       // Fire and forget batch commit.
-      // Firestore will instantly save to local cache and sync in the background.
-      // This avoids slow responses and erroneous timeout messages.
-      batch.commit().catchError((error) {
+      batch.commit().then((_) {
+        // After successfully saving, wait 3 seconds then end the session.
+        // This gives the teacher time to see the "Attendance Completed" status.
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted) {
+            FirebaseFirestore.instance
+                .collection('sessions')
+                .doc(widget.sessionId)
+                .update({'active': false});
+          }
+        });
+      }).catchError((error) {
         debugPrint('Background sync error: $error');
       });
 
@@ -378,8 +389,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             ? _buildEmptyState()
             : _buildStudentList(),
       ),
-      bottomNavigationBar:
-          (!_isLoading && _students.isNotEmpty && !_attendanceMarked)
+      bottomNavigationBar: (!_isLoading && _students.isNotEmpty)
           ? Container(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
               decoration: BoxDecoration(
@@ -392,14 +402,18 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                 child: SizedBox(
                   height: 54,
                   child: ElevatedButton(
-                    onPressed: _isSaving ? null : _saveAttendance,
+                    onPressed: (_isSaving || _attendanceMarked) ? null : _saveAttendance,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: accent,
+                      backgroundColor: _attendanceMarked ? const Color(0xFF4ADE80) : accent,
                       foregroundColor: const Color(0xFF0B1220),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
                       ),
                       elevation: 0,
+                      disabledBackgroundColor: _attendanceMarked 
+                          ? const Color(0xFF4ADE80).withOpacity(0.8) 
+                          : accent.withOpacity(0.3),
+                      disabledForegroundColor: const Color(0xFF0B1220),
                     ),
                     child: _isSaving
                         ? const SizedBox(
@@ -410,9 +424,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                               strokeWidth: 2,
                             ),
                           )
-                        : const Text(
-                            'Save Attendance',
-                            style: TextStyle(
+                        : Text(
+                            _attendanceMarked ? 'Attendance Completed' : 'Save Attendance',
+                            style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w700,
                               letterSpacing: 0.5,
