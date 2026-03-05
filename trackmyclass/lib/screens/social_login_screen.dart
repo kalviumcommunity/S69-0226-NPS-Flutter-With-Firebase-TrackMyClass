@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -40,14 +41,15 @@ class _SocialLoginScreenState extends State<SocialLoginScreen>
 
     _typingController.forward();
 
-    // Floating animation (up/down)
+    // Wandering animation controller
     _floatingController = AnimationController(
-      duration: const Duration(seconds: 3),
+      duration: const Duration(seconds: 25),
       vsync: this,
-    )..repeat(reverse: true);
+    )..repeat();
 
-    _floatingAnimation = Tween<double>(begin: -10, end: 10).animate(
-      CurvedAnimation(parent: _floatingController, curve: Curves.easeInOut),
+    _floatingAnimation = CurvedAnimation(
+      parent: _floatingController,
+      curve: Curves.linear,
     );
   }
 
@@ -78,170 +80,8 @@ class _SocialLoginScreenState extends State<SocialLoginScreen>
                 ),
               ),
             ),
-            // Evenly Aligned Animated Educational Background Elements
-            // Top Row
-            AnimatedBuilder(
-              animation: _floatingAnimation,
-              builder: (context, child) {
-                return Positioned(
-                  top: 60 + _floatingAnimation.value,
-                  left: 30,
-                  child: Icon(
-                    Icons.menu_book_rounded,
-                    size: 50,
-                    color: const Color(0xFFFF9800).withOpacity(0.6),
-                  ),
-                );
-              },
-            ),
-            AnimatedBuilder(
-              animation: _floatingAnimation,
-              builder: (context, child) {
-                return Positioned(
-                  top: 60 - _floatingAnimation.value,
-                  right: 30,
-                  child: Icon(
-                    Icons.school_rounded,
-                    size: 50,
-                    color: const Color(0xFF9C27B0).withOpacity(0.6),
-                  ),
-                );
-              },
-            ),
-            // Middle Row
-            AnimatedBuilder(
-              animation: _floatingAnimation,
-              builder: (context, child) {
-                return Positioned(
-                  top:
-                      MediaQuery.of(context).size.height * 0.25 +
-                      _floatingAnimation.value,
-                  left: 40,
-                  child: Icon(
-                    Icons.calculate_outlined,
-                    size: 45,
-                    color: const Color(0xFF4CAF50).withOpacity(0.6),
-                  ),
-                );
-              },
-            ),
-            AnimatedBuilder(
-              animation: _floatingAnimation,
-              builder: (context, child) {
-                return Positioned(
-                  top:
-                      MediaQuery.of(context).size.height * 0.25 -
-                      _floatingAnimation.value,
-                  right: 40,
-                  child: Icon(
-                    Icons.science_outlined,
-                    size: 45,
-                    color: const Color(0xFFE91E63).withOpacity(0.6),
-                  ),
-                );
-              },
-            ),
-            // Center Row
-            AnimatedBuilder(
-              animation: _floatingAnimation,
-              builder: (context, child) {
-                return Positioned(
-                  top:
-                      MediaQuery.of(context).size.height * 0.45 -
-                      _floatingAnimation.value,
-                  left: 25,
-                  child: Icon(
-                    Icons.edit_note_rounded,
-                    size: 48,
-                    color: const Color(0xFFFFEB3B).withOpacity(0.6),
-                  ),
-                );
-              },
-            ),
-            AnimatedBuilder(
-              animation: _floatingAnimation,
-              builder: (context, child) {
-                return Positioned(
-                  top:
-                      MediaQuery.of(context).size.height * 0.45 +
-                      _floatingAnimation.value,
-                  right: 25,
-                  child: Icon(
-                    Icons.lightbulb_outline,
-                    size: 48,
-                    color: const Color(0xFFFFC107).withOpacity(0.7),
-                  ),
-                );
-              },
-            ),
-            // Lower Row
-            AnimatedBuilder(
-              animation: _floatingAnimation,
-              builder: (context, child) {
-                return Positioned(
-                  bottom:
-                      MediaQuery.of(context).size.height * 0.25 +
-                      _floatingAnimation.value,
-                  left: 35,
-                  child: Icon(
-                    Icons.auto_stories_rounded,
-                    size: 46,
-                    color: const Color(0xFF2196F3).withOpacity(0.6),
-                  ),
-                );
-              },
-            ),
-            AnimatedBuilder(
-              animation: _floatingAnimation,
-              builder: (context, child) {
-                return Positioned(
-                  bottom:
-                      MediaQuery.of(context).size.height * 0.25 -
-                      _floatingAnimation.value,
-                  right: 35,
-                  child: Icon(
-                    Icons.assignment_outlined,
-                    size: 46,
-                    color: const Color(0xFF00BCD4).withOpacity(0.6),
-                  ),
-                );
-              },
-            ),
-            // Bottom Row
-            AnimatedBuilder(
-              animation: _floatingAnimation,
-              builder: (context, child) {
-                return Positioned(
-                  bottom: 80 - _floatingAnimation.value,
-                  left: 50,
-                  child: Text(
-                    'π',
-                    style: TextStyle(
-                      fontSize: 36,
-                      color: const Color(0xFFFF5722).withOpacity(0.6),
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                );
-              },
-            ),
-            AnimatedBuilder(
-              animation: _floatingAnimation,
-              builder: (context, child) {
-                return Positioned(
-                  bottom: 80 + _floatingAnimation.value,
-                  right: 50,
-                  child: Text(
-                    '∑',
-                    style: TextStyle(
-                      fontSize: 36,
-                      color: const Color(0xFF3F51B5).withOpacity(0.6),
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                );
-              },
-            ),
+            // Dynamic Neutral Background Elements
+            ..._buildFloatingElements(context),
             // Decorative circles with icons
             AnimatedBuilder(
               animation: _floatingAnimation,
@@ -376,6 +216,192 @@ class _SocialLoginScreenState extends State<SocialLoginScreen>
         ),
       ),
     );
+  }
+
+  List<Widget> _buildFloatingElements(BuildContext context) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final screenWidth = MediaQuery.of(context).size.width;
+
+    final List<Map<String, dynamic>> elementConfigs = [
+      {
+        'icon': Icons.menu_book_rounded,
+        'top': 0.1,
+        'left': 0.1,
+        'size': 48.0,
+        'opacity': 0.15,
+        'phase': 0.0,
+        'speed': 1.0,
+        'drift': 40.0,
+      },
+      {
+        'icon': Icons.school_rounded,
+        'top': 0.15,
+        'right': 0.1,
+        'size': 54.0,
+        'opacity': 0.1,
+        'phase': 1.5,
+        'speed': 0.8,
+        'drift': 50.0,
+      },
+      {
+        'icon': Icons.calculate_outlined,
+        'top': 0.3,
+        'left': 0.15,
+        'size': 40.0,
+        'opacity': 0.12,
+        'phase': 3.0,
+        'speed': 1.2,
+        'drift': 35.0,
+      },
+      {
+        'icon': Icons.science_outlined,
+        'top': 0.38,
+        'right': 0.05,
+        'size': 42.0,
+        'opacity': 0.14,
+        'phase': 4.5,
+        'speed': 0.9,
+        'drift': 45.0,
+      },
+      {
+        'icon': Icons.edit_note_rounded,
+        'top': 0.58,
+        'left': 0.05,
+        'size': 46.0,
+        'opacity': 0.13,
+        'phase': 2.2,
+        'speed': 1.1,
+        'drift': 42.0,
+      },
+      {
+        'icon': Icons.lightbulb_outline,
+        'top': 0.68,
+        'right': 0.1,
+        'size': 50.0,
+        'opacity': 0.16,
+        'phase': 0.8,
+        'speed': 0.7,
+        'drift': 55.0,
+      },
+      {
+        'icon': Icons.auto_stories_rounded,
+        'bottom': 0.22,
+        'left': 0.1,
+        'size': 44.0,
+        'opacity': 0.11,
+        'phase': 5.1,
+        'speed': 1.3,
+        'drift': 38.0,
+      },
+      {
+        'icon': Icons.assignment_outlined,
+        'bottom': 0.18,
+        'right': 0.2,
+        'size': 42.0,
+        'opacity': 0.13,
+        'phase': 3.7,
+        'speed': 1.0,
+        'drift': 48.0,
+      },
+      {
+        'text': 'π',
+        'top': 0.48,
+        'right': 0.2,
+        'size': 32.0,
+        'opacity': 0.1,
+        'phase': 2.9,
+        'speed': 1.4,
+        'drift': 30.0,
+      },
+      {
+        'text': '∑',
+        'bottom': 0.12,
+        'left': 0.25,
+        'size': 34.0,
+        'opacity': 0.12,
+        'phase': 1.1,
+        'speed': 0.9,
+        'drift': 32.0,
+      },
+      {
+        'icon': Icons.functions_rounded,
+        'top': 0.22,
+        'right': 0.35,
+        'size': 38.0,
+        'opacity': 0.09,
+        'phase': 4.3,
+        'speed': 1.1,
+        'drift': 44.0,
+      },
+      {
+        'icon': Icons.biotech_rounded,
+        'bottom': 0.42,
+        'left': 0.3,
+        'size': 45.0,
+        'opacity': 0.1,
+        'phase': 0.5,
+        'speed': 0.8,
+        'drift': 52.0,
+      },
+    ];
+
+    return elementConfigs.map((config) {
+      final isText = config.containsKey('text');
+      final content = isText
+          ? Text(
+              config['text'],
+              style: TextStyle(
+                fontSize: config['size'],
+                color: Colors.white.withOpacity(config['opacity']),
+                fontWeight: FontWeight.bold,
+              ),
+            )
+          : Icon(
+              config['icon'],
+              size: config['size'],
+              color: Colors.white.withOpacity(config['opacity']),
+            );
+
+      return AnimatedBuilder(
+        animation: _floatingAnimation,
+        builder: (context, child) {
+          // Use sine and cosine for wandering circular/elliptical drift
+          final time = _floatingAnimation.value * 2 * 3.14159 * config['speed'];
+          final double horizontalOffset =
+              (config.containsKey('left') || config.containsKey('right'))
+              ? (config.containsKey('left') ? 1 : -1) *
+                    (math.sin(time + config['phase']) * config['drift'])
+              : 0;
+          final double verticalOffset =
+              (config.containsKey('top') || config.containsKey('bottom'))
+              ? (config.containsKey('top') ? 1 : -1) *
+                    (math.cos(time + config['phase'] * 1.5) * config['drift'])
+              : 0;
+
+          double? top = config['top'] != null
+              ? config['top'] * screenHeight + verticalOffset
+              : null;
+          double? bottom = config['bottom'] != null
+              ? config['bottom'] * screenHeight + verticalOffset
+              : null;
+          double? left = config['left'] != null
+              ? config['left'] * screenWidth + horizontalOffset
+              : null;
+          double? right = config['right'] != null
+              ? config['right'] * screenWidth + horizontalOffset
+              : null;
+
+          return Positioned(
+            top: top,
+            bottom: bottom,
+            left: left,
+            right: right,
+            child: child!,
+          );
+        },
+        child: content,
+      );
+    }).toList();
   }
 }
 
