@@ -284,7 +284,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     });
   }
 
-  Future<void> _renameClass(String? classId, String oldName, String newName) async {
+  Future<void> _renameClass(
+    String? classId,
+    String oldName,
+    String newName,
+  ) async {
     try {
       if (classId != null) {
         // 1. Update existing class
@@ -1157,6 +1161,251 @@ class _ProfileTabState extends State<_ProfileTab> {
       widget.user?.emailVerified ??
       (_firestoreData?['emailVerified'] as bool? ?? false);
 
+  // ── Edit profile (name + subject) ──
+  void _editProfile() {
+    final nameCtrl = TextEditingController(
+      text: _displayName == 'Teacher' ? '' : _displayName,
+    );
+    final subjectCtrl = TextEditingController(text: _subject);
+    bool _saving = false;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).viewInsets.bottom,
+          ),
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Color(0xFF1A2640),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Drag handle
+                const SizedBox(height: 12),
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                // Title
+                const Text(
+                  'Edit Profile',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                // Name field
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: TextField(
+                    controller: nameCtrl,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      labelText: 'Name',
+                      labelStyle: TextStyle(
+                        color: Colors.white.withOpacity(0.5),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: Colors.white.withOpacity(0.15),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: _accent),
+                      ),
+                      prefixIcon: Icon(
+                        Icons.person_outline_rounded,
+                        color: _accent,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                // Subject field
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: TextField(
+                    controller: subjectCtrl,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      labelText: 'Subject',
+                      labelStyle: TextStyle(
+                        color: Colors.white.withOpacity(0.5),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: Colors.white.withOpacity(0.15),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: _accent),
+                      ),
+                      prefixIcon: Icon(
+                        Icons.menu_book_rounded,
+                        color: const Color(0xFF4ADE80),
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                // Action buttons
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => Navigator.of(ctx).pop(),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.07),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Center(
+                              child: Text(
+                                'Cancel',
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.6),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: _saving
+                              ? null
+                              : () async {
+                                  setSheetState(() => _saving = true);
+                                  final newName = nameCtrl.text.trim();
+                                  final newSubject = subjectCtrl.text.trim();
+                                  final uid = widget.user?.uid;
+                                  if (uid == null) {
+                                    Navigator.of(ctx).pop();
+                                    return;
+                                  }
+                                  try {
+                                    await FirebaseFirestore.instance
+                                        .collection('users')
+                                        .doc(uid)
+                                        .set({
+                                          'name': newName,
+                                          'subject': newSubject,
+                                        }, SetOptions(merge: true));
+                                    await FirebaseAuth.instance.currentUser
+                                        ?.updateDisplayName(newName);
+                                    if (ctx.mounted) Navigator.of(ctx).pop();
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: const Text(
+                                            'Profile updated',
+                                          ),
+                                          backgroundColor: const Color(
+                                            0xFF4ADE80,
+                                          ),
+                                          duration: const Duration(seconds: 2),
+                                          behavior: SnackBarBehavior.floating,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  } catch (e) {
+                                    setSheetState(() => _saving = false);
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: const Text(
+                                            'Failed to update. Try again.',
+                                          ),
+                                          backgroundColor: const Color(
+                                            0xFFFF6B6B,
+                                          ),
+                                          behavior: SnackBarBehavior.floating,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  }
+                                },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [_accent, const Color(0xFF0EA5E9)],
+                              ),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Center(
+                              child: _saving
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        color: Colors.white,
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Text(
+                                      'Save',
+                                      style: TextStyle(
+                                        color: Color(0xFF0B1220),
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 28),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   // ── Send password reset to current user's email ──
   Future<void> _sendPasswordReset() async {
     final email = _email;
@@ -1288,103 +1537,133 @@ class _ProfileTabState extends State<_ProfileTab> {
                       ),
                     ],
                   ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      children: [
-                        // Avatar
-                        Container(
-                          width: 88,
-                          height: 88,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [_accent, const Color(0xFF0EA5E9)],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: _accent.withOpacity(0.45),
-                                blurRadius: 20,
-                                offset: const Offset(0, 6),
+                  child: Stack(
+                    children: [
+                      SizedBox(
+                        width: double.infinity,
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            children: [
+                              // Avatar
+                              Container(
+                                width: 88,
+                                height: 88,
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [_accent, const Color(0xFF0EA5E9)],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ),
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: _accent.withOpacity(0.45),
+                                      blurRadius: 20,
+                                      offset: const Offset(0, 6),
+                                    ),
+                                  ],
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    avatarInitials.toUpperCase(),
+                                    style: const TextStyle(
+                                      color: Color(0xFF0B1220),
+                                      fontSize: 28,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 1,
+                                    ),
+                                  ),
+                                ),
                               ),
+                              const SizedBox(height: 16),
+                              // Name
+                              Text(
+                                _displayName,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.2,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 6),
+                              // Email
+                              Text(
+                                _email,
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.5),
+                                  fontSize: 13,
+                                ),
+                                textAlign: TextAlign.center,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              // Subject badge — only visible when subject is set
+                              if (_subject.isNotEmpty) ...[
+                                const SizedBox(height: 14),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: _accent.withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(30),
+                                    border: Border.all(
+                                      color: _accent.withOpacity(0.3),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.menu_book_rounded,
+                                        color: _accent,
+                                        size: 14,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        _subject,
+                                        style: const TextStyle(
+                                          color: _accent,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          letterSpacing: 0.3,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
-                          child: Center(
-                            child: Text(
-                              avatarInitials.toUpperCase(),
-                              style: const TextStyle(
-                                color: Color(0xFF0B1220),
-                                fontSize: 28,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 1,
-                              ),
-                            ),
-                          ),
                         ),
-                        const SizedBox(height: 16),
-                        // Name
-                        Text(
-                          _displayName,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.2,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 6),
-                        // Email
-                        Text(
-                          _email,
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.5),
-                            fontSize: 13,
-                          ),
-                          textAlign: TextAlign.center,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        // Subject badge — only visible when subject is set
-                        if (_subject.isNotEmpty) ...[
-                          const SizedBox(height: 14),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 6,
-                            ),
+                      ),
+                      // Edit button — top-right corner
+                      Positioned(
+                        top: 12,
+                        right: 12,
+                        child: GestureDetector(
+                          onTap: _editProfile,
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: _accent.withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(30),
+                              color: _accent.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(12),
                               border: Border.all(
                                 color: _accent.withOpacity(0.3),
                               ),
                             ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.menu_book_rounded,
-                                  color: _accent,
-                                  size: 14,
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  _subject,
-                                  style: const TextStyle(
-                                    color: _accent,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    letterSpacing: 0.3,
-                                  ),
-                                ),
-                              ],
+                            child: Icon(
+                              Icons.edit_rounded,
+                              color: _accent,
+                              size: 16,
                             ),
                           ),
-                        ],
-                      ],
-                    ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -2462,11 +2741,13 @@ class _ClassPickerSheetState extends State<_ClassPickerSheet> {
     );
 
     if (result != null && result.isNotEmpty && result != oldName && mounted) {
-      Navigator.of(context).pop(_ClassPickerResult(
-        renameId: classId,
-        renameTo: result,
-        oldName: oldName,
-      ));
+      Navigator.of(context).pop(
+        _ClassPickerResult(
+          renameId: classId,
+          renameTo: result,
+          oldName: oldName,
+        ),
+      );
     }
   }
 
@@ -2555,9 +2836,9 @@ class _ClassPickerSheetState extends State<_ClassPickerSheet> {
                 children: _localClasses.map((cls) {
                   final isSelected = cls == _currentSelected;
                   // Check if this is a remote class (has an ID)
-                  final remoteMatch = widget.remoteClassesData.where(
-                    (d) => d['name'] == cls,
-                  ).firstOrNull;
+                  final remoteMatch = widget.remoteClassesData
+                      .where((d) => d['name'] == cls)
+                      .firstOrNull;
                   final classId = remoteMatch?['id'] as String?;
 
                   return Container(
