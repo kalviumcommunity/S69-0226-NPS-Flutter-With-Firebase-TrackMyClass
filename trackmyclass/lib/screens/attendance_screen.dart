@@ -246,9 +246,12 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
       // Fire and forget batch commit.
       batch.commit().then((_) {
-        // After successfully saving, wait 24 hours then end the session.
-        // This gives the teacher time to see the "Attendance Completed" status.
-        Future.delayed(const Duration(hours: 24), () {
+        // At 12:00 AM midnight, end the session to revert home card to "Start Session"
+        final now = DateTime.now();
+        final nextMidnight = DateTime(now.year, now.month, now.day + 1);
+        final durationUntilMidnight = nextMidnight.difference(now);
+
+        Future.delayed(durationUntilMidnight, () {
           if (mounted) {
             FirebaseFirestore.instance
                 .collection('sessions')
