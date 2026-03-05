@@ -428,8 +428,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
       await batch.commit();
 
-      // After 3 seconds, end the session to revert home card to "Start Session"
-      Future.delayed(const Duration(seconds: 3), () {
+      // After 24 hours, end the session to revert home card to "Start Session"
+      Future.delayed(const Duration(hours: 24), () {
         if (mounted) {
           FirebaseFirestore.instance
               .collection('sessions')
